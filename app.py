@@ -17,7 +17,7 @@ from PySide6.QtWidgets import (QApplication, QComboBox, QDoubleSpinBox, QFileDia
 from jobs import JobStore
 from render import build_command, probe, validate_paths, publish_no_replace
 from version import __version__
-from runtime_support import check_disk, configure_logging, source_key, ProbeCache
+from runtime_support import check_disk, configure_logging, source_key, ProbeCache, read_log_tail
 
 
 def export_worker(params, cancelled, events):
@@ -86,7 +86,7 @@ def export_worker(params, cancelled, events):
         elif disk_errors:
             raise ValueError(disk_errors[0])
         elif code:
-            raise ValueError('Ошибка FFmpeg: ' + log.read_text(encoding='utf-8')[-1800:])
+            raise ValueError('Ошибка FFmpeg: ' + read_log_tail(log)[-1800:])
         else:
             actual = probe(temporary)
             if abs(actual - params['duration']) > 0.25:

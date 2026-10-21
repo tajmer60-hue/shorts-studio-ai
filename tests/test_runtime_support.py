@@ -35,3 +35,10 @@ class RuntimeTests(unittest.TestCase):
             check_disk('.')
             with self.assertRaises(ValueError):
                 check_disk('.', 30)
+
+    def test_log_tail_reads_only_bounded_suffix(self):
+        import io
+        from runtime_support import read_log_tail
+        buffer = io.BytesIO(b'x' * 100000 + b'last error')
+        with patch('builtins.open', return_value=buffer):
+            self.assertEqual(read_log_tail('unused', 10), 'last error')

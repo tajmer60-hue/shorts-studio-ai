@@ -62,3 +62,10 @@ class ProbeCache:
 
     def close(self):
         self.db.close()
+
+def read_log_tail(path, limit=8192):
+    """Read a bounded byte suffix even after a long FFmpeg run."""
+    with open(path, 'rb') as stream:
+        stream.seek(0, 2)
+        stream.seek(max(0, stream.tell() - limit))
+        return stream.read(limit).decode('utf-8', errors='replace')
