@@ -9,6 +9,7 @@ import threading
 import uuid
 
 from PySide6.QtCore import QTimer, QLockFile, QStandardPaths
+from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import (QApplication, QComboBox, QDoubleSpinBox, QFileDialog,
     QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox,
     QProgressBar, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
@@ -255,8 +256,19 @@ class Studio(QMainWindow):
             event.accept()
 
 
+def configure_font(app):
+    # Offscreen Windows environments may not enumerate installed fonts.
+    if sys.platform == 'win32' and not QFontDatabase.families():
+        font = Path(os.environ.get('WINDIR', 'C:/Windows')) / 'Fonts' / 'segoeui.ttf'
+        if font.is_file():
+            QFontDatabase.addApplicationFont(str(font))
+    if 'Segoe UI' in QFontDatabase.families():
+        app.setFont(QFont('Segoe UI', 10))
+
+
 def main():
     app = QApplication(sys.argv)
+    configure_font(app)
     app.setApplicationName('ShortsStudioAI')
     app.setOrganizationName('ShortsStudioAI')
     data = Path(os.environ.get('SHORTS_STUDIO_DATA_DIR') or QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppLocalDataLocation))

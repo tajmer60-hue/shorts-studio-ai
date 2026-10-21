@@ -11,7 +11,8 @@ from render import executable
 from app import export_worker
 from analyze_reference import analyze
 from PySide6.QtWidgets import QApplication
-from app import Studio
+from app import Studio, configure_font
+from PySide6.QtGui import QFontMetrics
 
 
 class IntegrationTests(unittest.TestCase):
@@ -113,6 +114,9 @@ class GuiTests(unittest.TestCase):
     def test_window_initialization_and_close(self):
         os.environ.setdefault('QT_QPA_PLATFORM', 'offscreen')
         application = QApplication.instance() or QApplication([])
+        configure_font(application)
+        if os.name == 'nt':
+            self.assertTrue(QFontMetrics(application.font()).inFontUcs4(ord('Я')))
         with tempfile.TemporaryDirectory(dir=Path.cwd()) as folder:
             window = Studio(folder)
             application.processEvents()
