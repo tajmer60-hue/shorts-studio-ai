@@ -271,7 +271,7 @@ def main():
     configure_font(app)
     app.setApplicationName('ShortsStudioAI')
     app.setOrganizationName('ShortsStudioAI')
-    data = Path(os.environ.get('SHORTS_STUDIO_DATA_DIR') or QStandardPaths.writableLocation(QStandardPaths.StandardLocation.AppLocalDataLocation))
+    data = Path(os.environ.get('SHORTS_STUDIO_DATA_DIR') or Path(__file__).resolve().parent / 'data')
     data.mkdir(parents=True, exist_ok=True)
     lock = QLockFile(str(data / 'app.lock'))
     if not lock.tryLock(100):

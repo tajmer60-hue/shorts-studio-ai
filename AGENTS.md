@@ -13,6 +13,8 @@ Build Shorts Studio AI as a local Windows 11 application. The user is the custom
 
 ## Data and operations
 
+- The user requires all project dependencies, tools, media, models, data and caches on D:, keeping C: free. Do not install more project dependencies on C: as a fallback. Use D:\ShortsStudioAI\project once migration is completed and verified. If the tool sandbox denies D: writes, report that limitation instead of claiming migration succeeded. Existing system Python and other user programs must be preserved.
+
 - Never delete the user's source media or replace existing exports. Restrict cleanup to temporary artifacts created by the current task.
 - Never publish videos without explicit confirmation. Do not add automatic uploading.
 - Keep video, transcripts and analysis local by default. Ask before introducing external processing or paid services.

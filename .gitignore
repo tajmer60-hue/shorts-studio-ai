@@ -16,3 +16,5 @@ models/
 *.partial.mp4
 *.log
 .pytest_cache/
+MIGRATION_CONFIG.json
+dist/
