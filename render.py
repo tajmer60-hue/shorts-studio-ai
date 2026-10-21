@@ -2,6 +2,7 @@
 from pathlib import Path
 import json
 import math
+import os
 import shutil
 import subprocess
 
@@ -28,7 +29,7 @@ def probe(source):
     return float(data['format']['duration'])
 
 
-def build_command(source, target, start, duration, total, mode, ffmpeg=None):
+def validate_paths(source, target):
     source, target = Path(source), Path(target)
     if not source.is_file():
         raise ValueError('Выберите существующий видеофайл.')
@@ -36,6 +37,22 @@ def build_command(source, target, start, duration, total, mode, ffmpeg=None):
         raise ValueError('Исходный файл нельзя перезаписывать.')
     if target.exists():
         raise ValueError('Выходной файл уже существует. Выберите другое имя.')
+    if not target.parent.is_dir():
+        raise ValueError('Папка результата не существует. Выберите другую папку.')
+    return source, target
+
+
+def publish_no_replace(temporary, target):
+    """Publish atomically without replacing a concurrently created destination."""
+    if os.name == 'nt':
+        os.rename(temporary, target)
+    else:
+        # Both names are in the same folder. Caller removes the temporary link.
+        os.link(temporary, target)
+
+
+def build_command(source, target, start, duration, total, mode, ffmpeg=None):
+    source, target = validate_paths(source, target)
     if not all(math.isfinite(x) for x in (start, duration, total)):
         raise ValueError('Время должно быть конечным числом.')
     if start < 0 or duration <= 0 or start + duration > total + 0.01:
