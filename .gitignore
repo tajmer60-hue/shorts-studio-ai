@@ -1,0 +1,17 @@
+__pycache__/
+*.pyc
+.venv/
+.tmp/
+data/
+*.sqlite3*
+.env
+tools/
+media/
+exports/
+references/
+input/
+output/
+cache/
+models/
+*.partial.mp4
+*.log
