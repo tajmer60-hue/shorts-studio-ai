@@ -15,3 +15,4 @@ cache/
 models/
 *.partial.mp4
 *.log
+.pytest_cache/

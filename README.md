@@ -40,6 +40,8 @@ AI-выбор сцен, Serial Cutter с пониманием сюжета, Vira
 
 ## Документы
 
+- [ENVIRONMENT_SETUP.md](ENVIRONMENT_SETUP.md): изолированное окружение, AI-зависимости и GPU-проверки.
+
 - [PROJECT_SPEC.md](PROJECT_SPEC.md): полное ТЗ, архитектура и этапы.
 - [AGENTS.md](AGENTS.md): постоянные правила разработки.
 - [AUTHENTICATION.md](AUTHENTICATION.md): компоненты, поток обработки, локальные данные и отсутствие токенов.
