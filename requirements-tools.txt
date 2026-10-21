@@ -1,0 +1,2 @@
+# Optional prebuilt FFmpeg binary, isolated inside the venv.
+imageio-ffmpeg==0.6.0
