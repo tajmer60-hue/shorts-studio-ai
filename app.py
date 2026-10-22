@@ -21,6 +21,7 @@ from runtime_support import check_disk, configure_logging, source_key, ProbeCach
 
 
 from pipeline import export_worker
+from analysis_lite import analyze
 
 
 class Studio(QMainWindow):
@@ -36,6 +37,10 @@ class Studio(QMainWindow):
         self.closing = False
         self.paused = False
         self.last_folder = None
+        self.analysis_folder = Path(data_dir).parent / 'cache' / 'analysis'
+        self.analyzing = False
+        self.analysis_cancel = threading.Event()
+        self.candidates = []
         root = QWidget()
         self.setCentralWidget(root)
         layout = QVBoxLayout(root)
@@ -65,6 +70,16 @@ class Studio(QMainWindow):
         self.mode.addItem('Обрезать по центру — края будут скрыты', 'crop')
         form.addRow('Кадрирование', self.mode)
         layout.addLayout(form)
+        self.analyze_button = QPushButton('Анализ серии — Lite')
+        self.analyze_button.clicked.connect(self.analyze_source)
+        layout.addWidget(self.analyze_button)
+        self.candidate_table = QTableWidget(0, 4)
+        self.candidate_table.setHorizontalHeaderLabels(['Начало', 'Конец', 'Оценка Lite', 'Причина / проверка'])
+        self.candidate_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.candidate_table.horizontalHeader().setStretchLastSection(True)
+        self.candidate_table.cellDoubleClicked.connect(self.use_candidate)
+        layout.addWidget(self.candidate_table)
+        layout.addWidget(QLabel('Двойной щелчок по предложению подставляет отрезок. Lite не понимает сюжет и речь.'))
         actions = QHBoxLayout()
         add = QPushButton('Добавить в очередь')
         add.clicked.connect(self.add_job)
@@ -97,7 +112,7 @@ class Studio(QMainWindow):
         folder = QPushButton('Открыть папку последнего результата')
         folder.clicked.connect(self.open_output)
         layout.addWidget(folder)
-        layout.addWidget(QLabel('M1: ручная нарезка. AI-выбор сцен, субтитры и Smart Censor ещё не реализованы.'))
+        layout.addWidget(QLabel('P1 preview: Lite-предложения по сменам планов. Смысловой AI-отбор, ASR и цензура ещё не реализованы.'))
         self.refresh()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.poll)
@@ -107,6 +122,35 @@ class Studio(QMainWindow):
         value, _ = QFileDialog.getOpenFileName(self, 'Выберите видео', '', 'Видео (*.mp4 *.mkv *.mov *.avi *.webm);;Все файлы (*)')
         if value:
             self.source.setText(value)
+
+    def analyze_source(self):
+        if self.current is not None or self.analyzing:
+            return
+        source = Path(self.source.text())
+        if not source.is_file():
+            QMessageBox.warning(self, 'Анализ', 'Выберите существующее видео.')
+            return
+        self.analyzing = True
+        self.analysis_cancel = threading.Event()
+        self.analyze_button.setEnabled(False)
+        self.stop.setEnabled(True)
+        self.status.setText('Lite: поиск смен планов и тишины…')
+        self.progress.setRange(0, 0)
+        def work():
+            try:
+                report = analyze(source, self.analysis_folder, self.analysis_cancel)
+                self.events.put(('analysis_done', report))
+            except Exception as error:
+                self.events.put(('analysis_error', str(error)))
+        threading.Thread(target=work, daemon=True).start()
+
+    def use_candidate(self, row, column):
+        if row < len(self.candidates):
+            item = self.candidates[row]
+            self.source.setText(self.analysis_source)
+            self.start.setValue(item['start'])
+            self.duration.setValue(item['end'] - item['start'])
+            self.status.setText('Отрезок выбран. Проверьте его перед финальным использованием; экспорт — кнопкой «Добавить в очередь».')
 
     def add_job(self):
         source = Path(self.source.text())
@@ -176,6 +220,7 @@ class Studio(QMainWindow):
         self.pause.setText('Продолжить очередь' if self.paused else 'Приостановить очередь')
 
     def cancel(self):
+        self.analysis_cancel.set()
         self.cancelled.set()
         self.status.setText('Отменяю текущее задание…')
 
@@ -187,7 +232,23 @@ class Studio(QMainWindow):
         try:
             while True:
                 kind, value = self.events.get_nowait()
-                if kind == 'progress':
+                if kind in ('analysis_done', 'analysis_error'):
+                    self.analyzing = False
+                    self.analyze_button.setEnabled(True)
+                    self.stop.setEnabled(False)
+                    self.progress.setRange(0, 100)
+                    if kind == 'analysis_error':
+                        self.status.setText(value)
+                    else:
+                        self.candidates = value['candidates']
+                        self.analysis_source = value['source']
+                        self.candidate_table.setRowCount(len(self.candidates))
+                        for i, candidate in enumerate(self.candidates):
+                            for col, key in enumerate(('start', 'end', 'score', 'reason')):
+                                self.candidate_table.setItem(i, col, QTableWidgetItem(str(candidate[key])))
+                        self.progress.setValue(100)
+                        self.status.setText(f"Lite: {len(value['scene_boundaries'])} смен планов, {len(self.candidates)} предложений. Требуется просмотр; ASR ещё нет.")
+                elif kind == 'progress':
                     self.progress.setValue(int(value))
                 elif kind == 'finished':
                     status, message = value
@@ -202,10 +263,10 @@ class Studio(QMainWindow):
         except queue.Empty:
             pass
         if self.closing:
-            if self.current is None:
+            if self.current is None and not self.analyzing:
                 self.close()
             return
-        if self.current is None and not self.paused:
+        if self.current is None and not self.paused and not self.analyzing:
             row = self.store.next()
             if row:
                 self.current = row['id']
@@ -220,7 +281,7 @@ class Studio(QMainWindow):
                 threading.Thread(target=export_worker, args=(parameters, self.cancelled, self.events), daemon=True).start()
 
     def closeEvent(self, event):
-        if self.current is not None:
+        if self.current is not None or self.analyzing:
             self.closing = True
             self.cancel()
             event.ignore()
