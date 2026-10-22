@@ -1,11 +1,11 @@
 """Build a self-contained Windows GUI archive from already installed dependencies."""
 from pathlib import Path
 import argparse
-import json
 import os
 import struct
 import sys
 import zipfile
+from version import __version__
 
 
 def imports(path):
@@ -78,7 +78,7 @@ def build(target):
         for name in imports(source):
             if name.lower() in available:
                 binaries.append(available[name.lower()])
-    for name in ('app.py', 'jobs.py', 'render.py', 'portable_launch.py', 'portable_selftest.py', 'migrate_to_d.py', 'README.md', 'PROJECT_SPEC.md', 'AUTHENTICATION.md', 'REFERENCE_ANALYSIS.md'):
+    for name in ('app.py', 'jobs.py', 'render.py', 'portable_launch.py', 'portable_selftest.py', 'version.py', 'runtime_support.py', 'pipeline.py', 'process_guard.py', 'README.md', 'PROJECT_SPEC.md', 'AUTHENTICATION.md', 'REFERENCE_ANALYSIS.md'):
         add(root / name, name)
     for name in ('ffmpeg.exe', 'ffprobe.exe'):
         add(root / 'tools' / name, 'tools/' + name)
@@ -93,14 +93,13 @@ def build(target):
     for source in (root / '.tmp' / 'ffmpeg').rglob('LICENSE'):
         add(source, 'licenses/FFmpeg-LICENSE.txt')
     extras = {
-        'MIGRATION_CONFIG.json': json.dumps({'workspace': str(root.parent.parent)}, ensure_ascii=False, indent=2),
-        'runtime/python313._pth': '.\nLib\nDLLs\nsite-packages\n..\nimport site\n',
+        f'runtime/python{sys.version_info.major}{sys.version_info.minor}._pth': '.\nLib\nDLLs\nsite-packages\n..\nimport site\n',
         'START.bat': '@echo off\r\ncd /d "%~dp0"\r\nset PYTHONDONTWRITEBYTECODE=1\r\nstart "" "%~dp0runtime\\pythonw.exe" "%~dp0portable_launch.py"\r\n',
-        'MOVE-PROJECT-TO-D.bat': '@echo off\r\ncd /d "%~dp0"\r\nchcp 65001 >nul\r\nset PYTHONDONTWRITEBYTECODE=1\r\n"%~dp0runtime\\python.exe" -X utf8 "%~dp0migrate_to_d.py"\r\n',
         'TEST.bat': '@echo off\r\ncd /d "%~dp0"\r\nset PYTHONDONTWRITEBYTECODE=1\r\n"%~dp0runtime\\python.exe" -X utf8 "%~dp0portable_selftest.py"\r\npause\r\n',
         'HOW-TO-TEST.txt': 'Shorts Studio AI — тестовая версия M1\n\n1. Распакуйте всю папку Shorts-Studio-AI на диск D:. Не запускайте из ZIP.\n2. Откройте START.bat двойным щелчком. Python устанавливать не нужно.\n3. Выберите видео, начало 0 секунд и длительность 30 секунд.\n4. Нажмите «Добавить в очередь», сохраните под новым именем на D:.\n5. Дождитесь «Готово» и откройте папку результата.\n\nРаботают ручная нарезка, вертикальный MP4, очередь, отмена.\nAI-выбор сцен, автоcубтитры и Smart Censor пока отсутствуют.\nБаза, кэш и журнал запуска сохраняются рядом с приложением.\nПри ошибке смотрите data/startup.log.\n',
         'THIRD-PARTY.txt': 'Bundled CPython from python.org, PySide6/Shiboken6 from The Qt Company, FFmpeg from Gyan essentials.\nFFmpeg origin: https://www.gyan.dev/ffmpeg/builds/\nFFmpeg source: https://ffmpeg.org/download.html\nQt/PySide source and license information: https://code.qt.io/pyside/pyside-setup.git/ and https://www.qt.io/licensing/open-source-lgpl-obligations\nThis archive contains the editable Python application and dynamically loaded Qt libraries.\n',
     }
+    extras['VERSION.txt'] = __version__ + '\n'
     target.parent.mkdir(parents=True, exist_ok=True)
     with zipfile.ZipFile(target, 'w', zipfile.ZIP_DEFLATED, compresslevel=3) as archive:
         for destination, source in sorted(files.items()):
@@ -115,3 +114,4 @@ if __name__ == '__main__':
     parser.add_argument('output', type=Path)
     args = parser.parse_args()
     build(args.output)
+

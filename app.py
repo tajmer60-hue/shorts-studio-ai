@@ -1,6 +1,7 @@
 """Local Windows application. No network processing of user media."""
 from pathlib import Path
 import json
+import logging
 import os
 import queue
 import subprocess
@@ -8,82 +9,27 @@ import sys
 import threading
 import uuid
 
-from PySide6.QtCore import QTimer, QLockFile, QStandardPaths
+from PySide6.QtCore import QTimer, QLockFile
 from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import (QApplication, QComboBox, QDoubleSpinBox, QFileDialog,
     QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox,
     QProgressBar, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
 from jobs import JobStore
-from render import build_command, probe
+from render import build_command, probe, validate_paths, publish_no_replace
+from version import __version__
+from runtime_support import check_disk, configure_logging, source_key, ProbeCache, read_log_tail
 
 
-def export_worker(params, cancelled, events):
-    target = Path(params['target'])
-    temp = target.with_name(target.stem + '.' + uuid.uuid4().hex + '.partial.mp4')
-    log = temp.with_suffix('.log')
-    process = None
-    result = ('failed', 'Не удалось завершить задание.')
-    try:
-        total = probe(params['source'])
-        command = build_command(params['source'], temp, params['start'],
-                                params['duration'], total, params['mode'])
-        if cancelled.is_set():
-            result = ('cancelled', 'Отменено.')
-        else:
-            with log.open('w', encoding='utf-8') as stderr:
-                process = subprocess.Popen(command, stdout=subprocess.PIPE, stderr=stderr,
-                    text=True, encoding='utf-8', errors='replace',
-                    creationflags=getattr(subprocess, 'CREATE_NO_WINDOW', 0))
-
-                def watch():
-                    while process.poll() is None:
-                        if cancelled.wait(0.1):
-                            if process.poll() is None:
-                                process.terminate()
-                            return
-                watcher = threading.Thread(target=watch, daemon=True)
-                watcher.start()
-                for line in process.stdout:
-                    if line.startswith('out_time_us='):
-                        try:
-                            events.put(('progress', min(99, float(line.split('=')[1]) / 1000000 / params['duration'] * 100)))
-                        except ValueError:
-                            pass
-                code = process.wait()
-                watcher.join(timeout=1)
-            if cancelled.is_set():
-                result = ('cancelled', 'Отменено.')
-            elif code:
-                raise ValueError('Ошибка FFmpeg: ' + log.read_text(encoding='utf-8')[-1800:])
-            else:
-                probe(temp)
-                if target.exists():
-                    raise ValueError('Результат уже существует. Выберите другое имя.')
-                temp.rename(target)
-                result = ('completed', str(target))
-    except Exception as error:
-        result = ('failed', str(error))
-    finally:
-        if process is not None:
-            if process.poll() is None:
-                process.terminate()
-                process.wait()
-            if process.stdout:
-                process.stdout.close()
-        for path in (temp, log):
-            try:
-                path.unlink(missing_ok=True)
-            except OSError:
-                pass
-        events.put(('finished', result))
+from pipeline import export_worker
 
 
 class Studio(QMainWindow):
     def __init__(self, data_dir):
         super().__init__()
-        self.setWindowTitle('Shorts Studio AI — локальный монтаж')
+        self.setWindowTitle(f'Shorts Studio AI {__version__} — локальный монтаж')
         self.resize(1000, 700)
-        self.store = JobStore(Path(data_dir) / 'jobs.sqlite3')
+        self.database_path = str(Path(data_dir) / 'jobs.sqlite3')
+        self.store = JobStore(self.database_path)
         self.events = queue.Queue()
         self.cancelled = threading.Event()
         self.current = None
@@ -93,7 +39,7 @@ class Studio(QMainWindow):
         root = QWidget()
         self.setCentralWidget(root)
         layout = QVBoxLayout(root)
-        title = QLabel('Shorts Studio AI')
+        title = QLabel(f'Shorts Studio AI {__version__}')
         title.setStyleSheet('font-size: 28px; font-weight: 700; padding: 10px 0;')
         layout.addWidget(title)
         layout.addWidget(QLabel('Локальные файлы • MP4 1080 × 1920 • постоянная очередь'))
@@ -127,6 +73,9 @@ class Studio(QMainWindow):
         self.stop.setEnabled(False)
         self.stop.clicked.connect(self.cancel)
         actions.addWidget(self.stop)
+        selected_cancel = QPushButton('Отменить выбранное')
+        selected_cancel.clicked.connect(self.cancel_selected)
+        actions.addWidget(selected_cancel)
         self.pause = QPushButton('Приостановить очередь')
         self.pause.clicked.connect(self.toggle_pause)
         actions.addWidget(self.pause)
@@ -179,6 +128,7 @@ class Studio(QMainWindow):
             QMessageBox.warning(self, 'Очередь', str(error))
 
     def refresh(self):
+        selected_id = self.selected_job_id()
         rows = self.store.rows()
         self.table.setRowCount(len(rows))
         names = dict(pending='В очереди', running='Обработка', completed='Готово',
@@ -188,16 +138,38 @@ class Studio(QMainWindow):
             for col, value in enumerate(values):
                 self.table.setItem(i, col, QTableWidgetItem(value))
         self.table.resizeColumnsToContents()
+        if selected_id is not None:
+            for index, row in enumerate(rows):
+                if row['id'] == selected_id:
+                    self.table.selectRow(index)
+                    break
+
+    def selected_job_id(self):
+        row = self.table.currentRow()
+        item = self.table.item(row, 0) if row >= 0 else None
+        return int(item.text()) if item is not None else None
 
     def retry(self):
-        selected = self.table.currentRow()
-        if selected < 0:
+        job_id = self.selected_job_id()
+        if job_id is None:
             return
-        job_id = int(self.table.item(selected, 0).text())
-        row = next(row for row in self.store.rows() if row['id'] == job_id)
-        if row['status'] in ('failed', 'cancelled', 'interrupted'):
-            self.store.update(job_id, 'pending')
+        try:
+            self.store.retry(job_id)
             self.refresh()
+        except ValueError as error:
+            QMessageBox.warning(self, 'Очередь', str(error))
+
+    def cancel_selected(self):
+        job_id = self.selected_job_id()
+        if job_id is None:
+            return
+        if job_id == self.current:
+            self.cancel()
+        elif self.store.cancel_pending(job_id):
+            self.status.setText(f'Задание {job_id} отменено до запуска.')
+            self.refresh()
+        else:
+            self.status.setText('Выберите задание в очереди или текущее задание.')
 
     def toggle_pause(self):
         self.paused = not self.paused
@@ -243,7 +215,9 @@ class Studio(QMainWindow):
                 self.status.setText(f'Задание {self.current}: проверка и экспорт…')
                 self.stop.setEnabled(True)
                 self.refresh()
-                threading.Thread(target=export_worker, args=(json.loads(row['parameters']), self.cancelled, self.events), daemon=True).start()
+                parameters = json.loads(row['parameters'])
+                parameters['_checkpoint_db'] = self.database_path
+                threading.Thread(target=export_worker, args=(parameters, self.cancelled, self.events), daemon=True).start()
 
     def closeEvent(self, event):
         if self.current is not None:
@@ -277,6 +251,7 @@ def main():
     if not lock.tryLock(100):
         QMessageBox.information(None, 'Shorts Studio AI', 'Приложение уже запущено или папка данных занята.')
         return 1
+    configure_logging(data / 'logs')
     window = Studio(data)
     window.show()
     code = app.exec()
@@ -286,3 +261,4 @@ def main():
 
 if __name__ == '__main__':
     sys.exit(main())
+
