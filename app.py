@@ -13,7 +13,7 @@ from PySide6.QtCore import QTimer, QLockFile
 from PySide6.QtGui import QFont, QFontDatabase
 from PySide6.QtWidgets import (QApplication, QComboBox, QDoubleSpinBox, QFileDialog,
     QFormLayout, QHBoxLayout, QLabel, QLineEdit, QMainWindow, QMessageBox,
-    QProgressBar, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget)
+    QProgressBar, QPushButton, QTableWidget, QTableWidgetItem, QVBoxLayout, QWidget, QTabWidget)
 from jobs import JobStore
 from render import build_command, probe, validate_paths, publish_no_replace
 from version import __version__
@@ -21,6 +21,7 @@ from runtime_support import check_disk, configure_logging, source_key, ProbeCach
 
 
 from pipeline import export_worker
+from analysis_lite import analyze
 
 
 class Studio(QMainWindow):
@@ -36,6 +37,11 @@ class Studio(QMainWindow):
         self.closing = False
         self.paused = False
         self.last_folder = None
+        self.analysis_folder = Path(data_dir).parent / 'cache' / 'analysis'
+        self.analyzing = False
+        self.analysis_cancel = threading.Event()
+        self.candidates = []
+        self.transcript = None
         root = QWidget()
         self.setCentralWidget(root)
         layout = QVBoxLayout(root)
@@ -65,6 +71,29 @@ class Studio(QMainWindow):
         self.mode.addItem('Обрезать по центру — края будут скрыты', 'crop')
         form.addRow('Кадрирование', self.mode)
         layout.addLayout(form)
+        self.analyze_button = QPushButton('Анализ серии — Lite')
+        self.analyze_button.clicked.connect(self.analyze_source)
+        layout.addWidget(self.analyze_button)
+        self.speech_button = QPushButton('Распознать речь и субтитры — локально')
+        self.speech_button.clicked.connect(self.analyze_speech)
+        layout.addWidget(self.speech_button)
+        self.candidate_table = QTableWidget(0, 4)
+        self.candidate_table.setHorizontalHeaderLabels(['Начало', 'Конец', 'Оценка Lite', 'Причина / проверка'])
+        self.candidate_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.candidate_table.horizontalHeader().setStretchLastSection(True)
+        self.candidate_table.cellDoubleClicked.connect(self.use_candidate)
+        tabs = QTabWidget()
+        tabs.addTab(self.candidate_table, 'Предложения Lite')
+        self.speech_table = QTableWidget(0, 3)
+        self.speech_table.setHorizontalHeaderLabels(['Начало', 'Конец', 'Распознанная фраза — проверьте'])
+        self.speech_table.setEditTriggers(QTableWidget.EditTrigger.NoEditTriggers)
+        self.speech_table.horizontalHeader().setStretchLastSection(True)
+        tabs.addTab(self.speech_table, 'Речь')
+        layout.addWidget(tabs)
+        save_srt = QPushButton('Сохранить SRT исходника')
+        save_srt.clicked.connect(self.save_subtitles)
+        layout.addWidget(save_srt)
+        layout.addWidget(QLabel('Двойной щелчок по предложению подставляет отрезок. Lite не понимает сюжет и речь.'))
         actions = QHBoxLayout()
         add = QPushButton('Добавить в очередь')
         add.clicked.connect(self.add_job)
@@ -97,7 +126,7 @@ class Studio(QMainWindow):
         folder = QPushButton('Открыть папку последнего результата')
         folder.clicked.connect(self.open_output)
         layout.addWidget(folder)
-        layout.addWidget(QLabel('M1: ручная нарезка. AI-выбор сцен, субтитры и Smart Censor ещё не реализованы.'))
+        layout.addWidget(QLabel('P1: локальная речь и Lite. Смысловой монтаж, сопровождение кадра и цензура ещё в работе.'))
         self.refresh()
         self.timer = QTimer(self)
         self.timer.timeout.connect(self.poll)
@@ -107,6 +136,77 @@ class Studio(QMainWindow):
         value, _ = QFileDialog.getOpenFileName(self, 'Выберите видео', '', 'Видео (*.mp4 *.mkv *.mov *.avi *.webm);;Все файлы (*)')
         if value:
             self.source.setText(value)
+
+    def analyze_source(self):
+        if self.current is not None or self.analyzing:
+            return
+        source = Path(self.source.text())
+        if not source.is_file():
+            QMessageBox.warning(self, 'Анализ', 'Выберите существующее видео.')
+            return
+        self.analyzing = True
+        self.analysis_cancel = threading.Event()
+        self.analyze_button.setEnabled(False)
+        self.stop.setEnabled(True)
+        self.status.setText('Lite: поиск смен планов и тишины…')
+        self.progress.setRange(0, 0)
+        def work():
+            try:
+                report = analyze(source, self.analysis_folder, self.analysis_cancel)
+                self.events.put(('analysis_done', report))
+            except Exception as error:
+                self.events.put(('analysis_error', str(error)))
+        threading.Thread(target=work, daemon=True).start()
+
+    def use_candidate(self, row, column):
+        if row < len(self.candidates):
+            item = self.candidates[row]
+            self.source.setText(self.analysis_source)
+            self.start.setValue(item['start'])
+            self.duration.setValue(item['end'] - item['start'])
+            self.status.setText('Отрезок выбран. Проверьте его перед финальным использованием; экспорт — кнопкой «Добавить в очередь».')
+
+    def analyze_speech(self):
+        if self.current is not None or self.analyzing:
+            return
+        source = Path(self.source.text())
+        if not source.is_file():
+            QMessageBox.warning(self, 'Речь', 'Выберите видео.')
+            return
+        self.analyzing = True
+        self.analysis_cancel = threading.Event()
+        self.speech_button.setEnabled(False)
+        self.analyze_button.setEnabled(False)
+        self.stop.setEnabled(True)
+        self.progress.setRange(0, 100)
+        self.progress.setValue(0)
+        self.status.setText('Локальное распознавание речи. Модель запускается на компьютере…')
+        def work():
+            try:
+                from speech import transcribe
+                model = Path(os.environ.get('SHORTS_STUDIO_MODEL_DIR') or Path(__file__).parent / 'models' / 'faster-whisper-small')
+                report = transcribe(source, model, self.analysis_folder.parent / 'speech', self.analysis_cancel,
+                                    lambda value: self.events.put(('progress', value)))
+                self.events.put(('speech_done', report))
+            except ModuleNotFoundError:
+                self.events.put(('analysis_error', 'В этой сборке нет AI-зависимостей. Запустите start.bat из папки проекта с установленным окружением.'))
+            except Exception as error:
+                self.events.put(('analysis_error', str(error)))
+        threading.Thread(target=work, daemon=True).start()
+
+    def save_subtitles(self):
+        if self.transcript is None:
+            QMessageBox.information(self, 'Субтитры', 'Сначала выполните распознавание речи.')
+            return
+        name, _ = QFileDialog.getSaveFileName(self, 'SRT полного исходника', '', 'SubRip (*.srt)')
+        if not name:
+            return
+        try:
+            from speech import srt
+            with Path(name).with_suffix('.srt').open('x', encoding='utf-8') as output:
+                output.write(srt(self.transcript['cues']))
+        except OSError as error:
+            QMessageBox.warning(self, 'Субтитры', str(error))
 
     def add_job(self):
         source = Path(self.source.text())
@@ -176,6 +276,7 @@ class Studio(QMainWindow):
         self.pause.setText('Продолжить очередь' if self.paused else 'Приостановить очередь')
 
     def cancel(self):
+        self.analysis_cancel.set()
         self.cancelled.set()
         self.status.setText('Отменяю текущее задание…')
 
@@ -187,7 +288,36 @@ class Studio(QMainWindow):
         try:
             while True:
                 kind, value = self.events.get_nowait()
-                if kind == 'progress':
+                if kind == 'speech_done':
+                    self.analyzing = False
+                    self.speech_button.setEnabled(True)
+                    self.analyze_button.setEnabled(True)
+                    self.stop.setEnabled(False)
+                    self.transcript = value
+                    self.speech_table.setRowCount(len(value['cues']))
+                    for i, cue in enumerate(value['cues']):
+                        for col, key in enumerate(('start', 'end', 'text')):
+                            self.speech_table.setItem(i, col, QTableWidgetItem(str(cue[key])))
+                    self.progress.setValue(100)
+                    self.status.setText(f"Речь: {len(value['words'])} слов, {len(value['pause_proposals'])} пауз для проверки. Автоматически ничего не вырезано.")
+                elif kind in ('analysis_done', 'analysis_error'):
+                    self.analyzing = False
+                    self.speech_button.setEnabled(True)
+                    self.analyze_button.setEnabled(True)
+                    self.stop.setEnabled(False)
+                    self.progress.setRange(0, 100)
+                    if kind == 'analysis_error':
+                        self.status.setText(value)
+                    else:
+                        self.candidates = value['candidates']
+                        self.analysis_source = value['source']
+                        self.candidate_table.setRowCount(len(self.candidates))
+                        for i, candidate in enumerate(self.candidates):
+                            for col, key in enumerate(('start', 'end', 'score', 'reason')):
+                                self.candidate_table.setItem(i, col, QTableWidgetItem(str(candidate[key])))
+                        self.progress.setValue(100)
+                        self.status.setText(f"Lite: {len(value['scene_boundaries'])} смен планов, {len(self.candidates)} предложений. Требуется просмотр; ASR ещё нет.")
+                elif kind == 'progress':
                     self.progress.setValue(int(value))
                 elif kind == 'finished':
                     status, message = value
@@ -202,10 +332,10 @@ class Studio(QMainWindow):
         except queue.Empty:
             pass
         if self.closing:
-            if self.current is None:
+            if self.current is None and not self.analyzing:
                 self.close()
             return
-        if self.current is None and not self.paused:
+        if self.current is None and not self.paused and not self.analyzing:
             row = self.store.next()
             if row:
                 self.current = row['id']
@@ -220,7 +350,7 @@ class Studio(QMainWindow):
                 threading.Thread(target=export_worker, args=(parameters, self.cancelled, self.events), daemon=True).start()
 
     def closeEvent(self, event):
-        if self.current is not None:
+        if self.current is not None or self.analyzing:
             self.closing = True
             self.cancel()
             event.ignore()

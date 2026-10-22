@@ -78,7 +78,7 @@ def build(target):
         for name in imports(source):
             if name.lower() in available:
                 binaries.append(available[name.lower()])
-    for name in ('app.py', 'jobs.py', 'render.py', 'portable_launch.py', 'portable_selftest.py', 'version.py', 'runtime_support.py', 'pipeline.py', 'process_guard.py', 'README.md', 'PROJECT_SPEC.md', 'AUTHENTICATION.md', 'REFERENCE_ANALYSIS.md'):
+    for name in ('app.py', 'jobs.py', 'render.py', 'portable_launch.py', 'portable_selftest.py', 'version.py', 'runtime_support.py', 'pipeline.py', 'process_guard.py', 'analysis_lite.py', 'speech.py', 'edit_plan.py', 'cuda_runtime.py', 'MODELS.md', 'PRODUCT_DIRECTION.md', 'README.md', 'PROJECT_SPEC.md', 'AUTHENTICATION.md', 'REFERENCE_ANALYSIS.md'):
         add(root / name, name)
     for name in ('ffmpeg.exe', 'ffprobe.exe'):
         add(root / 'tools' / name, 'tools/' + name)
