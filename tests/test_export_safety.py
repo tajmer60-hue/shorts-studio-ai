@@ -19,7 +19,7 @@ class ExportSafetyTests(unittest.TestCase):
     def test_precancelled_job_never_probes_or_starts_ffmpeg(self):
         stop, events = threading.Event(), queue.Queue()
         stop.set()
-        with patch('app.probe') as probe, patch('app.subprocess.Popen') as popen:
+        with patch('pipeline.probe') as probe, patch('pipeline.subprocess.Popen') as popen:
             export_worker({}, stop, events)
             probe.assert_not_called()
             popen.assert_not_called()
@@ -30,7 +30,7 @@ class ExportSafetyTests(unittest.TestCase):
         params = dict(source=str(root / 'README.md'), target=str(root / 'render.py'),
                       start=0, duration=1, mode='fit')
         events = queue.Queue()
-        with patch('app.probe') as probe, patch('app.subprocess.Popen') as popen:
+        with patch('pipeline.probe') as probe, patch('pipeline.subprocess.Popen') as popen:
             export_worker(params, threading.Event(), events)
             probe.assert_not_called()
             popen.assert_not_called()
@@ -45,3 +45,4 @@ class ExportSafetyTests(unittest.TestCase):
         root = Path(__file__).resolve().parent.parent
         with self.assertRaisesRegex(ValueError, 'Папка результата'):
             validate_paths(root / 'README.md', root / '__nonexistent_output_parent__' / 'short.mp4')
+
