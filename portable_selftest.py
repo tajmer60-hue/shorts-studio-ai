@@ -17,7 +17,8 @@ def verify():
     os.environ['QT_QPA_PLATFORM'] = 'offscreen'
     from PySide6.QtWidgets import QApplication
     from PySide6.QtGui import QFontMetrics
-    from app import Studio, configure_font, export_worker
+    from app import configure_font, export_worker
+    from review_ui import ReviewStudio as Studio
     from render import executable
     app = QApplication([])
     configure_font(app)

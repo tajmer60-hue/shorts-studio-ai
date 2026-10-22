@@ -63,9 +63,9 @@ def build(target):
     for source in (packages / 'shiboken6').rglob('*'):
         if '__pycache__' not in source.parts:
             add(source, 'runtime/site-packages/shiboken6/' + source.relative_to(packages / 'shiboken6').as_posix())
-    binaries = [qt / (name + '.pyd') for name in ('QtCore', 'QtGui', 'QtWidgets')]
+    binaries = [qt / (name + '.pyd') for name in ('QtCore', 'QtGui', 'QtWidgets', 'QtNetwork', 'QtMultimedia', 'QtMultimediaWidgets')]
     binaries += [qt / 'plugins/platforms/qwindows.dll', qt / 'plugins/platforms/qoffscreen.dll']
-    for folder in ('imageformats', 'styles'):
+    for folder in ('imageformats', 'styles', 'multimedia'):
         binaries.extend((qt / 'plugins' / folder).glob('*.dll'))
     available = {p.name.lower(): p for p in qt.glob('*.dll')}
     visited = set()
@@ -82,6 +82,8 @@ def build(target):
         add(root / name, name)
     for name in ('ffmpeg.exe', 'ffprobe.exe'):
         add(root / 'tools' / name, 'tools/' + name)
+    for name in ('review_ui.py', 'delivery.py', 'ai_contract.py', 'AI_OPTIONS.md'):
+        add(root / name, name)
     for source in qt.glob('*.txt'):
         add(source, 'licenses/PySide6/' + source.name)
     for distribution in packages.glob('*.dist-info'):
@@ -96,7 +98,7 @@ def build(target):
         f'runtime/python{sys.version_info.major}{sys.version_info.minor}._pth': '.\nLib\nDLLs\nsite-packages\n..\nimport site\n',
         'START.bat': '@echo off\r\ncd /d "%~dp0"\r\nset PYTHONDONTWRITEBYTECODE=1\r\nstart "" "%~dp0runtime\\pythonw.exe" "%~dp0portable_launch.py"\r\n',
         'TEST.bat': '@echo off\r\ncd /d "%~dp0"\r\nset PYTHONDONTWRITEBYTECODE=1\r\n"%~dp0runtime\\python.exe" -X utf8 "%~dp0portable_selftest.py"\r\npause\r\n',
-        'HOW-TO-TEST.txt': 'Shorts Studio AI — тестовая версия M1\n\n1. Распакуйте всю папку Shorts-Studio-AI на диск D:. Не запускайте из ZIP.\n2. Откройте START.bat двойным щелчком. Python устанавливать не нужно.\n3. Выберите видео, начало 0 секунд и длительность 30 секунд.\n4. Нажмите «Добавить в очередь», сохраните под новым именем на D:.\n5. Дождитесь «Готово» и откройте папку результата.\n\nРаботают ручная нарезка, вертикальный MP4, очередь, отмена.\nAI-выбор сцен, автоcубтитры и Smart Censor пока отсутствуют.\nБаза, кэш и журнал запуска сохраняются рядом с приложением.\nПри ошибке смотрите data/startup.log.\n',
+        'HOW-TO-TEST.txt': 'Shorts Studio AI 0.2.0.dev3 — выбор и просмотр\nРаспакуйте на D: и откройте START.bat.\nВыберите видео и папку результата → Найти фрагменты → выбрать → название → Подготовить предпросмотр → воспроизвести и подтвердить → Получить видео.\nРаспознавание речи требует отдельного AI-окружения и модели; архив их не содержит. Это ещё не автономный AI-монтаж. Подробности в README.md.\n',
         'THIRD-PARTY.txt': 'Bundled CPython from python.org, PySide6/Shiboken6 from The Qt Company, FFmpeg from Gyan essentials.\nFFmpeg origin: https://www.gyan.dev/ffmpeg/builds/\nFFmpeg source: https://ffmpeg.org/download.html\nQt/PySide source and license information: https://code.qt.io/pyside/pyside-setup.git/ and https://www.qt.io/licensing/open-source-lgpl-obligations\nThis archive contains the editable Python application and dynamically loaded Qt libraries.\n',
     }
     extras['VERSION.txt'] = __version__ + '\n'

@@ -382,7 +382,8 @@ def main():
         QMessageBox.information(None, 'Shorts Studio AI', 'Приложение уже запущено или папка данных занята.')
         return 1
     configure_logging(data / 'logs')
-    window = Studio(data)
+    from review_ui import ReviewStudio
+    window = ReviewStudio(data)
     window.show()
     code = app.exec()
     lock.unlock()

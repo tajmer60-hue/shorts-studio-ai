@@ -11,6 +11,7 @@ import uuid
 from render import probe, build_command, validate_paths, publish_no_replace
 from runtime_support import ProbeCache, source_key, check_disk, read_log_tail
 from process_guard import ProcessGuard
+from delivery import write_sidecars
 
 
 def digest(path):
@@ -81,7 +82,9 @@ def export_worker(params, cancelled, events, stage_hook=None):
             return
         source, target = Path(params['source']), Path(params['target'])
         identity = source_key(source)
-        key_data = [identity, str(target.resolve()), params['start'], params['duration'], params['mode'], 'export-v1']
+        title_image = params.get('title_image')
+        title_identity = digest(title_image) if title_image else None
+        key_data = [identity, str(target.resolve()), params['start'], params['duration'], params['mode'], title_identity, 'export-v2']
         key = hashlib.sha256(json.dumps(key_data).encode()).hexdigest()
         database = params.get('_checkpoint_db', ':memory:')
         journal = Journal(database, key)
@@ -89,6 +92,7 @@ def export_worker(params, cancelled, events, stage_hook=None):
         if target.exists():
             if state.get('stage') in ('qc', 'published') and matches(target, state['artifact']):
                 checkpoint('published')
+                write_sidecars(params)
                 result = ('completed', str(target))
                 return
             raise ValueError('Выходной файл уже существует. Выберите другое имя.')
@@ -96,6 +100,12 @@ def export_worker(params, cancelled, events, stage_hook=None):
         cache = ProbeCache(database)
         total = cache.duration(identity, lambda: probe(source))
         command = build_command(source, target, params['start'], params['duration'], total, params['mode'])
+        if title_image:
+            insertion=command.index('-t')
+            command[insertion:insertion]=['-i',str(title_image)]
+            vf=command.index('-vf');base_filter=command[vf+1]
+            command[vf:vf+2]=['-filter_complex',f"[0:v]{base_filter}[base];[base][1:v]overlay=0:0:enable='lt(t,3)'[titled]"]
+            command[command.index('0:v:0')]='[titled]'
         if not state:
             checkpoint('probe', source_identity=identity)
         temporary = Path(state['temporary']) if state.get('temporary') else target.with_name(target.stem + '.' + uuid.uuid4().hex + '.partial.mp4')
@@ -165,6 +175,7 @@ def export_worker(params, cancelled, events, stage_hook=None):
         if stage_hook:
             stage_hook('after_publish')
         checkpoint('published')
+        write_sidecars(params)
         result = ('completed', str(target))
     except Exception as error:
         logger.exception('Export failed')
