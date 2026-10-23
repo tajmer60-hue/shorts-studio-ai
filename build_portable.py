@@ -84,6 +84,8 @@ def build(target):
         add(root / 'tools' / name, 'tools/' + name)
     for name in ('review_ui.py', 'delivery.py', 'ai_contract.py', 'AI_OPTIONS.md'):
         add(root / name, name)
+    for name in ('auto_ui.py', 'auto_workflow.py', 'cloud_planner.py', 'montage_render.py', 'story_brain.py', 'openrouter_connect.py'):
+        add(root / name, name)
     for source in qt.glob('*.txt'):
         add(source, 'licenses/PySide6/' + source.name)
     for distribution in packages.glob('*.dist-info'):
@@ -98,7 +100,7 @@ def build(target):
         f'runtime/python{sys.version_info.major}{sys.version_info.minor}._pth': '.\nLib\nDLLs\nsite-packages\n..\nimport site\n',
         'START.bat': '@echo off\r\ncd /d "%~dp0"\r\nset PYTHONDONTWRITEBYTECODE=1\r\nstart "" "%~dp0runtime\\pythonw.exe" "%~dp0portable_launch.py"\r\n',
         'TEST.bat': '@echo off\r\ncd /d "%~dp0"\r\nset PYTHONDONTWRITEBYTECODE=1\r\n"%~dp0runtime\\python.exe" -X utf8 "%~dp0portable_selftest.py"\r\npause\r\n',
-        'HOW-TO-TEST.txt': 'Shorts Studio AI 0.2.0.dev3 — выбор и просмотр\nРаспакуйте на D: и откройте START.bat.\nВыберите видео и папку результата → Найти фрагменты → выбрать → название → Подготовить предпросмотр → воспроизвести и подтвердить → Получить видео.\nРаспознавание речи требует отдельного AI-окружения и модели; архив их не содержит. Это ещё не автономный AI-монтаж. Подробности в README.md.\n',
+        'HOW-TO-TEST.txt': 'Shorts Studio AI 0.3 API development preview\nSTART.bat opens the new automatic workflow. This minimal archive does not contain local ASR dependencies or speech weights. On the development computer use D:\\ShortsStudioAI\\project\\start.bat for the complete local environment. Cloud is disabled by default. See README.md and AI_OPTIONS.md for tested capabilities and limitations.\n',
         'THIRD-PARTY.txt': 'Bundled CPython from python.org, PySide6/Shiboken6 from The Qt Company, FFmpeg from Gyan essentials.\nFFmpeg origin: https://www.gyan.dev/ffmpeg/builds/\nFFmpeg source: https://ffmpeg.org/download.html\nQt/PySide source and license information: https://code.qt.io/pyside/pyside-setup.git/ and https://www.qt.io/licensing/open-source-lgpl-obligations\nThis archive contains the editable Python application and dynamically loaded Qt libraries.\n',
     }
     extras['VERSION.txt'] = __version__ + '\n'

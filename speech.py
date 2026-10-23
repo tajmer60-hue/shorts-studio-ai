@@ -31,7 +31,7 @@ def extract(source, path, start, duration, cancelled):
         with log.open('w',encoding='utf-8') as stderr:
             process=subprocess.Popen([executable('ffmpeg'),'-hide_banner','-v','error','-nostdin','-n',
                 '-protocol_whitelist','file,pipe','-ss',str(start),'-i',str(source),'-t',str(duration),
-                '-vn','-ac','1','-ar','16000','-c:a','pcm_s16le',str(path)],stderr=stderr,
+                '-map','0:a:0','-vn','-ac','1','-ar','16000','-c:a','pcm_s16le',str(path)],stderr=stderr,
                 creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0))
             guard=ProcessGuard(process)
             while process.poll() is None:
@@ -90,7 +90,7 @@ def transcribe(source, model_dir, cache_dir, cancelled, progress=lambda value:No
     identity=source_key(source)
     weight=(model_dir/'model.bin').stat()
     model_identity=[str(model_dir),weight.st_size,weight.st_mtime_ns]
-    key=hashlib.sha256(json.dumps([identity,model_identity,language,'speech-v1']).encode()).hexdigest()
+    key=hashlib.sha256(json.dumps([identity,model_identity,language,'speech-v2-first-audio']).encode()).hexdigest()
     folder=Path(cache_dir)/key;folder.mkdir(parents=True,exist_ok=True)
     final=folder/'transcript.json'
     if cancelled.is_set():raise ValueError('Распознавание отменено.')

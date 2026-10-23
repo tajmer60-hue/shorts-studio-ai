@@ -18,7 +18,7 @@ def verify():
     from PySide6.QtWidgets import QApplication
     from PySide6.QtGui import QFontMetrics
     from app import configure_font, export_worker
-    from review_ui import ReviewStudio as Studio
+    from auto_ui import AutoStudio as Studio
     from render import executable
     app = QApplication([])
     configure_font(app)
