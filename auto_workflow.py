@@ -1,4 +1,9 @@
-"""Full-episode local preparation, optional cloud selection, automatic assembly."""
+"""Full-episode local preparation, optional cloud selection, automatic assembly.
+
+Nothing is sent to a provider unless the caller passes authorization, a key and a
+non-zero budget. Profanity is detected locally but never muted without an
+explicit user approval carried in `censor_ops`.
+"""
 from pathlib import Path
 import hashlib
 import json
@@ -8,6 +13,10 @@ from runtime_support import source_key
 from render import executable
 from montage_render import run_media,render_montage,aligned_segments
 from cloud_planner import OpenRouterPlanner,unique_chronological,REQUEST_RESERVE
+from censor import dictionary,profanity_hits,audio_ops
+from providers import GeminiPlanner,GroqPlanner,FallbackChain,Ledger,ConsentRequired,UNKNOWN_TARIFF_RESERVE
+
+PROVIDERS=('auto','gemini','groq','openrouter')
 
 
 def prepare_episode(source,root,cancelled,status):
@@ -43,14 +52,72 @@ def prepare_episode(source,root,cancelled,status):
     return project,transcript,manifest
 
 
-def create_clips(source,root,key,budget,authorized,cancelled,status,on_clip):
+def build_planner(settings,folder,authorized,budget):
+    """Create the planner the user approved. `auto` keeps the cheapest first.
+
+    Groq is text-only, so FallbackChain skips it whenever frames are attached and
+    a vision-capable provider is present; that skip is recorded, never silent.
+    """
+    settings=dict(settings or {})
+    provider=settings.get('provider','auto')
+    if provider not in PROVIDERS:raise ValueError('Неизвестный провайдер: '+str(provider))
+    folder=Path(folder)
+    gemini=(settings.get('gemini_key') or '').strip()
+    groq=(settings.get('groq_key') or '').strip()
+    openrouter=(settings.get('openrouter_key') or '').strip()
+    if not authorized or budget<=0:
+        raise ConsentRequired('Облачный анализ выключен: нужны разрешение и ненулевой лимит.')
+    if provider=='openrouter':
+        if not openrouter:raise ConsentRequired('Ключ OpenRouter не указан.')
+        return OpenRouterPlanner(openrouter,folder,budget,True)
+    ledger=Ledger(folder/'usage.sqlite3',budget)
+    planners=[]
+    if provider in ('auto','gemini') and gemini:
+        planners.append(GeminiPlanner(gemini,folder,budget,True,
+            model=settings.get('gemini_model','gemini-2.5-flash-lite'),ledger=ledger))
+    if provider in ('auto','groq') and groq:
+        planners.append(GroqPlanner(groq,folder,budget,True,
+            model=settings.get('groq_model','openai/gpt-oss-120b'),ledger=ledger))
+    if provider=='auto' and openrouter:
+        planners.append(OpenRouterPlanner(openrouter,folder,budget,True))
+    if not planners:
+        ledger.close()
+        raise ConsentRequired('Для выбранного провайдера нет ключа. Запрос не отправлен.')
+    return planners[0] if len(planners)==1 else FallbackChain(planners)
+
+
+def review_profanity(transcript,lexicon_path=None):
+    """Detect profanity locally. Returns proposals; approval stays with the user."""
+    lexicon=dictionary(lexicon_path)
+    hits=profanity_hits(transcript.get('words',[]),lexicon)
+    return dict(schema=1,lexicon=lexicon,hits=hits,
+                approved_ops=audio_ops(hits),
+                limitations=['Обнаружение по корням и таймкодам ASR: возможны пропуски и ложные срабатывания.',
+                             'Неуверенно распознанное слово не считается ни матом, ни безопасным.',
+                             'Без одобрения пользователя ничего не глушится.'])
+
+
+def create_clips(source,root,key,budget,authorized,cancelled,status,on_clip,
+                 settings=None,censor_ops=None,lexicon_path=None):
     project,transcript,manifest=prepare_episode(source,root,cancelled,status)
-    if not authorized:return dict(prepared=True,cloud=False,project=str(project))
-    planner=OpenRouterPlanner(key,project/'cloud',budget,authorized)
+    review=review_profanity(transcript,lexicon_path)
+    atomic_json(project/'censor_review.json',review)
+    if review['hits']:
+        status(f"Найдено спорных слов: {len(review['hits'])}. Список сохранён в censor_review.json; "
+               f"без вашего одобрения ничего не глушится.")
+    if not authorized:return dict(prepared=True,cloud=False,project=str(project),
+                                  profanity=len(review['hits']))
+    planner=(build_planner(settings,project/'cloud',authorized,budget) if settings
+             else OpenRouterPlanner(key,project/'cloud',budget,authorized))
     # Fail a fresh project before spending on only part of an episode.
-    required=(len(manifest['packets'])+1)*REQUEST_RESERVE
-    if not planner.ledger and budget<required:
-        raise ValueError(f'Для безопасного резерва всей серии нужен лимит ${required:.2f}. Это верхний резерв, не прогноз цены. Запросы не отправлены.')
+    reserve=float(getattr(planner,'reserve_estimate',lambda:REQUEST_RESERVE)())
+    ledger=getattr(planner,'ledger',None)
+    fresh=not ledger.rows() if ledger is not None else True
+    required=(len(manifest['packets'])+1)*reserve
+    if fresh and budget<required:
+        raise ValueError(f'Для безопасного резерва всей серии нужен лимит ${required:.2f} '
+                         f'({len(manifest["packets"])+1} запросов по ${reserve:.4f}). '
+                         f'Это верхний резерв, а не прогноз цены. Запросы не отправлены.')
     candidates=[]
     for i,item in enumerate(manifest['packets']):
         status(f'AI отбирает события: часть {i+1} из {len(manifest["packets"])}')
@@ -76,9 +143,14 @@ def create_clips(source,root,key,budget,authorized,cancelled,status,on_clip):
         aligned=aligned_segments(c,transcript['words'],manifest['duration'])
         c['source_segments']=[{'in':s['source_in'],'out':s['source_out']} for s in aligned['segments']]
     result=unique_chronological(result);atomic_json(project/'selected.json',result)
+    ops=list(censor_ops or [])
     for i,candidate in enumerate(result['candidates']):
         if cancelled.is_set():raise ValueError('Отменено.')
         status(f'Монтирую {i+1} из {len(result["candidates"])}: {candidate["title"]}')
-        video=render_montage(source,candidate,transcript,project/'renders',cancelled)
-        on_clip(dict(candidate=candidate,path=str(video),part=i+1))
-    return dict(prepared=True,cloud=True,clips=len(result['candidates']),project=str(project))
+        video=render_montage(source,candidate,transcript,project/'renders',cancelled,censor_ops=ops)
+        # Report what was actually applied, read back from the rendered artifact.
+        try:censor=json.loads((video.parent/'montage.json').read_text(encoding='utf-8')).get('censor',{})
+        except (OSError,ValueError,KeyError):censor={}
+        on_clip(dict(candidate=candidate,path=str(video),part=i+1,censor=censor))
+    return dict(prepared=True,cloud=True,clips=len(result['candidates']),project=str(project),
+                profanity=len(review['hits']),muted=len(ops))

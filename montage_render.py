@@ -9,6 +9,7 @@ from runtime_support import source_key,check_disk,read_log_tail
 from process_guard import ProcessGuard
 from speech import subtitle_cues,srt,atomic_json
 from edit_plan import remap_words
+from censor import remap_ops,volume_filter
 
 
 def run_media(command,cancelled,folder):
@@ -72,7 +73,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     return header+'\n'.join(lines)+'\n'
 
 
-def render_montage(source,candidate,transcript,folder,cancelled,progress=lambda x:None):
+def render_montage(source,candidate,transcript,folder,cancelled,progress=lambda x:None,censor_ops=None):
     if cancelled.is_set():raise ValueError('Отменено.')
     source=Path(source).resolve();folder=Path(folder).resolve();folder.mkdir(parents=True,exist_ok=True)
     identity=source_key(source);total=probe(source)
@@ -82,7 +83,15 @@ def render_montage(source,candidate,transcript,folder,cancelled,progress=lambda 
     plan=aligned_segments(candidate,words,total)
     if not 1<=plan['duration']<=180:raise ValueError('Монтаж должен длиться от 1 до 180 секунд.')
     cues=subtitle_cues(remap_words(words,plan))
-    key=hashlib.sha256(json.dumps([identity,plan,candidate['title'],cues,'montage-v1'],ensure_ascii=False).encode()).hexdigest()
+    # Censor intervals move into output time before rendering. A conflict means a
+    # cut would split a muted word, which is exactly the defect we must not ship.
+    censored=remap_ops(censor_ops or [],plan['segments'])
+    if censored['conflicts']:
+        details='; '.join(f"{c['word'] or 'интервал'} {c['start']:.2f}-{c['end']:.2f}: {c['reason']}"
+                          for c in censored['conflicts'][:5])
+        raise ValueError('Цензура не согласована с монтажом: '+details)
+    mute=volume_filter(censored['ops'])
+    key=hashlib.sha256(json.dumps([identity,plan,candidate['title'],cues,censored['ops'],'montage-v2'],ensure_ascii=False).encode()).hexdigest()
     work=folder/key;work.mkdir(exist_ok=True);target=work/'preview.mp4'
     marker=work/'complete.json'
     if marker.exists() and target.exists():
@@ -111,13 +120,20 @@ def render_montage(source,candidate,transcript,folder,cancelled,progress=lambda 
     # Generated cache path only, never interpolate AI/user text into a filter expression.
     escaped=str(subtitles).replace('\\','/').replace(':','\\:').replace("'","'\\''")
     temp=work/(uuid.uuid4().hex+'.partial.mp4')
-    run_media([executable('ffmpeg'),'-v','error','-nostdin','-n','-f','concat','-safe','1','-i',str(listing),
-        '-vf',"ass='"+escaped+"'",'-c:v','libx264','-preset','fast','-crf','20','-c:a','aac','-b:a','192k','-movflags','+faststart',str(temp)],cancelled,work)
+    final=[executable('ffmpeg'),'-v','error','-nostdin','-n','-f','concat','-safe','1','-i',str(listing),
+        '-vf',"ass='"+escaped+"'",'-c:v','libx264','-preset','fast','-crf','20','-c:a','aac','-b:a','192k']
+    # Only approved intervals are silenced; the rest of the dialogue is untouched.
+    if mute:final+=['-af',mute]
+    final+=['-movflags','+faststart',str(temp)]
+    run_media(final,cancelled,work)
     if abs(probe(temp)-plan['duration'])>.3:raise ValueError('Длительность монтажа не совпала с планом.')
     if source_key(source)!=identity:raise ValueError('Исходник изменился.')
     if target.exists():raise ValueError('Существующий предпросмотр повреждён; сохранён для диагностики.')
     from pipeline import digest
-    atomic_json(work/'montage.json',dict(candidate=candidate,plan=plan,source=str(source),source_identity=identity,cues=cues))
+    atomic_json(work/'montage.json',dict(candidate=candidate,plan=plan,source=str(source),source_identity=identity,
+                cues=cues,censor=dict(schema=1,ops=censored['ops'],conflicts=censored['conflicts'],
+                limitations=['Глушение применено только к интервалам, одобренным пользователем.',
+                             'Маскировка не устраняет авторские права и не гарантирует отсутствие ограничений платформы.'])))
     # Persist the validated artifact hash before rename. Recovery still requires
     # the final target AND a matching hash, never this marker alone.
     atomic_json(marker,dict(sha256=digest(temp)))

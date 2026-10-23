@@ -9,10 +9,11 @@ import uuid
 from PySide6.QtCore import QTimer,QUrl,Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,
-    QLineEdit,QFileDialog,QListWidget,QMessageBox,QCheckBox,QDoubleSpinBox,QGroupBox,QProgressBar,QSlider,QStackedWidget)
+    QLineEdit,QFileDialog,QListWidget,QListWidgetItem,QMessageBox,QCheckBox,QComboBox,QDoubleSpinBox,
+    QGroupBox,QProgressBar,QSlider,QStackedWidget)
 from PySide6.QtMultimedia import QMediaPlayer,QAudioOutput
 from PySide6.QtMultimediaWidgets import QVideoWidget
-from auto_workflow import create_clips
+from auto_workflow import PROVIDERS,create_clips
 from delivery import safe_name,timecode
 
 
@@ -31,12 +32,32 @@ class AutoStudio(QMainWindow):
         row=QHBoxLayout();row.addWidget(self.source);pick=QPushButton('Выбрать видео');pick.clicked.connect(self.pick_source);row.addWidget(pick);layout.addLayout(row)
         self.folder=QLineEdit();self.folder.setPlaceholderText('Папка для готовых роликов')
         row=QHBoxLayout();row.addWidget(self.folder);pick=QPushButton('Папка сохранения');pick.clicked.connect(self.pick_folder);row.addWidget(pick);layout.addLayout(row)
-        settings=QGroupBox('Подключение AI — OpenRouter / Gemini 2.5 Flash Lite');opts=QVBoxLayout(settings)
-        self.key=QLineEdit();self.key.setEchoMode(QLineEdit.EchoMode.Password);self.key.setPlaceholderText('API-ключ — только на время работы, на диск не сохраняется');opts.addWidget(self.key)
-        self.allowed=QCheckBox('Разрешаю платный анализ и отправку реплик + обзорных кадров в OpenRouter');opts.addWidget(self.allowed)
-        row=QHBoxLayout();row.addWidget(QLabel('Лимит проекта, USD:'));self.budget=QDoubleSpinBox();self.budget.setRange(0,20);self.budget.setValue(0);self.budget.setSingleStep(.5);row.addWidget(self.budget)
-        link=QLabel('<a href="https://openrouter.ai/settings/keys">Создать ключ OpenRouter с лимитом</a>');link.setOpenExternalLinks(True);row.addWidget(link);opts.addLayout(row)
+        settings=QGroupBox('Подключение AI — провайдер заменяем, запросов без разрешения нет');opts=QVBoxLayout(settings)
+        prow=QHBoxLayout();prow.addWidget(QLabel('Провайдер:'))
+        self.provider=QComboBox();self.provider.addItems(list(PROVIDERS))
+        self.provider.currentTextChanged.connect(self.provider_changed);prow.addWidget(self.provider,1);opts.addLayout(prow)
+        # One row per provider so a hidden key is never silently sent.
+        self.key_rows={};self.keys={}
+        for name,label,url in [('gemini_key','Gemini API — основной, видит кадры','https://aistudio.google.com/apikey'),
+                               ('groq_key','Groq — только текст и речь','https://console.groq.com/keys'),
+                               ('openrouter_key','OpenRouter — агрегатор, возвращает фактическую цену','https://openrouter.ai/settings/keys')]:
+            holder=QWidget();row=QHBoxLayout(holder);row.setContentsMargins(0,0,0,0)
+            field=QLineEdit();field.setEchoMode(QLineEdit.EchoMode.Password)
+            field.setPlaceholderText(label+' — ключ только на время работы, на диск не сохраняется')
+            row.addWidget(field,1)
+            link=QLabel('<a href="%s">получить ключ</a>'%url);link.setOpenExternalLinks(True);row.addWidget(link)
+            opts.addWidget(holder);self.key_rows[name]=holder;self.keys[name]=field
+        self.allowed=QCheckBox('Разрешаю платный анализ и отправку реплик + обзорных кадров выбранному провайдеру');opts.addWidget(self.allowed)
+        row=QHBoxLayout();row.addWidget(QLabel('Лимит проекта, USD:'));self.budget=QDoubleSpinBox();self.budget.setRange(0,20);self.budget.setValue(0);self.budget.setSingleStep(.5);row.addWidget(self.budget);opts.addLayout(row)
         opts.addWidget(QLabel('Пока разрешение выключено: только локальная подготовка. API не вызывается.'));layout.addWidget(settings)
+        censor_box=QGroupBox('Спорные слова — глушатся только после вашего выбора');cbox=QVBoxLayout(censor_box)
+        self.profanity=QListWidget();self.profanity.setMaximumHeight(120)
+        self.profanity.addItem('Список появится после локальной подготовки серии.')
+        cbox.addWidget(self.profanity)
+        self.apply_censor=QPushButton('Пересобрать ролики с выбранным глушением');self.apply_censor.setEnabled(False)
+        self.apply_censor.clicked.connect(self.rebuild_with_censor);cbox.addWidget(self.apply_censor)
+        layout.addWidget(censor_box)
+        self.provider_changed('auto')
         row=QHBoxLayout();self.start=QPushButton('Подготовить серию без расходов');self.start.setStyleSheet('background:#3478f6;font-size:17px;font-weight:700;padding:14px;');self.start.clicked.connect(self.begin);row.addWidget(self.start)
         self.stop=QPushButton('Остановить');self.stop.setEnabled(False);self.stop.clicked.connect(self.cancelled.set);row.addWidget(self.stop);layout.addLayout(row)
         self.allowed.toggled.connect(lambda on:self.start.setText('Создать ролики автоматически' if on else 'Подготовить серию без расходов'))
@@ -74,11 +95,25 @@ class AutoStudio(QMainWindow):
         if path:
             self.folder.setText(path);self.settings.write_text(json.dumps(dict(folder=path),ensure_ascii=False),encoding='utf-8')
 
-    def begin(self):
+    def provider_changed(self,value):
+        wanted={'auto':tuple(self.keys),'gemini':('gemini_key',),'groq':('groq_key',),
+                'openrouter':('openrouter_key',)}.get(value,())
+        for name,holder in self.key_rows.items():holder.setVisible(name in wanted)
+        self.key_hint='Нужен ключ: '+', '.join(wanted) if wanted else 'Нужен хотя бы один ключ.'
+
+    def begin(self,censor_ops=None):
         if self.busy:return
-        source=self.source.text().strip();authorized=self.allowed.isChecked();key=self.key.text();budget=self.budget.value()
+        source=self.source.text().strip();authorized=self.allowed.isChecked();budget=self.budget.value()
+        provider=self.provider.currentText()
+        keys={name:field.text().strip() for name,field in self.keys.items()}
         if not Path(source).is_file():self.status.setText('Выберите существующий видеофайл.');return
-        if authorized and (not key.strip() or budget<=0):self.status.setText('Для API нужны ключ и ненулевой лимит.');return
+        if authorized:
+            required={'auto':tuple(self.keys),'gemini':('gemini_key',),'groq':('groq_key',),
+                      'openrouter':('openrouter_key',)}.get(provider,())
+            if not any(keys[name] for name in required):
+                self.status.setText(self.key_hint+' Запрос не отправлен.');return
+            if budget<=0:self.status.setText('Нужен ненулевой лимит проекта: без него расходы неконтролируемы.');return
+        settings=dict(provider=provider,budget=budget,**keys)
         self.active_source=source
         self.player.stop();self.player.setSource(QUrl());self.catalog.clear();self.clips=[];self.save.setEnabled(False)
         from speech import atomic_json
@@ -86,11 +121,48 @@ class AutoStudio(QMainWindow):
         self.busy=True;self.cancelled=threading.Event();self.start.setEnabled(False);self.stop.setEnabled(True);self.progress.setRange(0,0)
         def work():
             try:
-                result=create_clips(source,self.root,key,budget,authorized,self.cancelled,
-                    lambda t:self.events.put(('status',t)),lambda c:self.events.put(('clip',c)))
+                result=create_clips(source,self.root,keys['openrouter_key'],budget,authorized,self.cancelled,
+                    lambda t:self.events.put(('status',t)),lambda c:self.events.put(('clip',c)),
+                    settings=settings,censor_ops=censor_ops)
                 self.events.put(('done',result))
             except Exception as error:self.events.put(('error',str(error)))
         threading.Thread(target=work,daemon=True).start()
+
+    def load_censor_review(self,project):
+        """Show detected words as proposals. Nothing is muted until the user ticks it."""
+        from censor import audio_ops
+        self.profanity.clear();self.apply_censor.setEnabled(False);self.censor_hits=[]
+        try:
+            review=json.loads((Path(project)/'censor_review.json').read_text(encoding='utf-8'))
+        except (OSError,ValueError,KeyError):
+            self.profanity.addItem('Список спорных слов не найден.');return
+        self.censor_hits=review.get('hits',[])
+        if not self.censor_hits:
+            self.profanity.addItem('Совпадений со словарём не найдено. Это не гарантия отсутствия мата.');return
+        for hit in self.censor_hits:
+            mark='сомнительно' if hit['confidence']=='low' else 'уверенно'
+            item=QListWidgetItem(f"[{mark}] {timecode(hit['start'])} «{hit['word']}» — {hit['reason']}")
+            item.setFlags(item.flags()|Qt.ItemFlag.ItemIsUserCheckable)
+            item.setCheckState(Qt.CheckState.Unchecked)
+            item.setData(Qt.ItemDataRole.UserRole,hit)
+            self.profanity.addItem(item)
+        self.apply_censor.setEnabled(True)
+
+    def rebuild_with_censor(self):
+        from censor import audio_ops
+        chosen=[]
+        for index in range(self.profanity.count()):
+            item=self.profanity.item(index)
+            if item.checkState()==Qt.CheckState.Checked:chosen.append(item.data(Qt.ItemDataRole.UserRole))
+        if not chosen:
+            self.status.setText('Отметьте слова для глушения. Без отметок ничего не меняется.');return
+        for hit in chosen:hit['approved']=True
+        try:
+            ops=audio_ops(chosen)
+        except ValueError as error:
+            QMessageBox.warning(self,'Цензура',str(error));return
+        self.status.setText(f'Пересобираю с глушением {len(ops)} интервалов…')
+        self.begin(censor_ops=ops)
 
     def poll(self):
         while True:
@@ -110,6 +182,7 @@ class AutoStudio(QMainWindow):
                 self.progress.setValue(100 if kind=='done' else 0)
                 if kind=='error':self.status.setText(value)
                 elif value['cloud']:self.status.setText(f"Готово роликов: {value['clips']}. Просмотрите монтаж и сохраните понравившиеся.")
+                if isinstance(value,dict) and value.get('project'):self.load_censor_review(value['project'])
                 else:self.status.setText('Подготовлено: диалоги и кадры всей серии сохранены локально. AI-отбор не запускался: платные запросы выключены.')
 
     def select(self,index):
@@ -119,7 +192,9 @@ class AutoStudio(QMainWindow):
         if pixmap.isNull():self.poster.setText('Нажмите «Смотреть», чтобы воспроизвести ролик')
         else:self.poster.setPixmap(pixmap.scaled(240,426,Qt.AspectRatioMode.KeepAspectRatio,Qt.TransformationMode.SmoothTransformation))
         self.display.setCurrentWidget(self.poster)
-        self.detail.setText(clip['candidate']['rationale']+'\nЦензура и сопровождение персонажа ещё не подключены.');self.save.setEnabled(True)
+        muted=len((clip.get('censor') or {}).get('ops',[]))
+        note=('\nЗаглушено интервалов: %d (только одобренные вами).'%muted) if muted else '\nГлушение мата не применялось.'
+        self.detail.setText(clip['candidate']['rationale']+note+'\nСопровождение персонажа (Smart Reframe) ещё не подключено.');self.save.setEnabled(True)
 
     def play(self):
         self.display.setCurrentWidget(self.video)

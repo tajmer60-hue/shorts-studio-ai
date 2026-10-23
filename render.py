@@ -47,8 +47,12 @@ def publish_no_replace(temporary, target):
     if os.name == 'nt':
         os.rename(temporary, target)
     else:
-        # Both names are in the same folder. Caller removes the temporary link.
+        # Both names are in the same folder. os.link raises FileExistsError when
+        # the destination appeared concurrently, so an existing result is never
+        # overwritten. Dropping our own temporary afterwards leaves exactly one
+        # file, matching the Windows rename path; the published inode survives.
         os.link(temporary, target)
+        os.unlink(temporary)
 
 
 def build_command(source, target, start, duration, total, mode, ffmpeg=None):

@@ -18,7 +18,8 @@ def manifest(folder):
     result = {}
     paths = sorted(folder.rglob('*'))
     for index, path in enumerate(paths):
-        if path.is_symlink() or path.is_junction():
+        # is_junction exists only on WindowsPath; a POSIX symlink check is enough elsewhere.
+        if path.is_symlink() or (os.name == 'nt' and path.is_junction()):
             raise RuntimeError('Refusing a link/junction: ' + str(path))
         if not path.is_file():
             continue
