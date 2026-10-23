@@ -84,7 +84,7 @@ def build(target):
         add(root / 'tools' / name, 'tools/' + name)
     for name in ('review_ui.py', 'delivery.py', 'ai_contract.py', 'AI_OPTIONS.md'):
         add(root / name, name)
-    for name in ('auto_ui.py', 'auto_workflow.py', 'cloud_planner.py', 'montage_render.py'):
+    for name in ('auto_ui.py', 'auto_workflow.py', 'cloud_planner.py', 'montage_render.py', 'story_brain.py', 'openrouter_connect.py'):
         add(root / name, name)
     for source in qt.glob('*.txt'):
         add(source, 'licenses/PySide6/' + source.name)

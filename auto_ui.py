@@ -33,6 +33,12 @@ class AutoStudio(QMainWindow):
         row=QHBoxLayout();row.addWidget(self.folder);pick=QPushButton('Папка сохранения');pick.clicked.connect(self.pick_folder);row.addWidget(pick);layout.addLayout(row)
         settings=QGroupBox('Подключение AI — OpenRouter / Gemini 2.5 Flash Lite');opts=QVBoxLayout(settings)
         self.key=QLineEdit();self.key.setEchoMode(QLineEdit.EchoMode.Password);self.key.setPlaceholderText('API-ключ — только на время работы, на диск не сохраняется');opts.addWidget(self.key)
+        self.key_path=Path(data_dir)/'openrouter.dpapi'
+        self.connect_button=QPushButton('Подключить OpenRouter через браузер');self.connect_button.clicked.connect(self.connect_router);opts.addWidget(self.connect_button)
+        self.remember_key=QCheckBox('Запомнить подключение на этом ПК (защита Windows)');opts.addWidget(self.remember_key)
+        from openrouter_connect import load_key
+        try:self.key.setText(load_key(self.key_path))
+        except (ValueError,OSError):pass
         self.allowed=QCheckBox('Разрешаю платный анализ и отправку реплик + обзорных кадров в OpenRouter');opts.addWidget(self.allowed)
         row=QHBoxLayout();row.addWidget(QLabel('Лимит проекта, USD:'));self.budget=QDoubleSpinBox();self.budget.setRange(0,20);self.budget.setValue(0);self.budget.setSingleStep(.5);row.addWidget(self.budget)
         link=QLabel('<a href="https://openrouter.ai/settings/keys">Создать ключ OpenRouter с лимитом</a>');link.setOpenExternalLinks(True);row.addWidget(link);opts.addLayout(row)
@@ -69,6 +75,22 @@ class AutoStudio(QMainWindow):
         path,_=QFileDialog.getOpenFileName(self,'Выберите видео','','Видео (*.mp4 *.mkv *.mov *.avi *.webm)')
         if path:self.source.setText(path)
 
+    def connect_router(self):
+        if getattr(self,'connection',None) and not self.connection.done.is_set():return
+        from openrouter_connect import Connection,save_key
+        from PySide6.QtGui import QDesktopServices
+        remember=self.remember_key.isChecked()
+        def accept(key):
+            if remember:save_key(self.key_path,key)
+            self.events.put(('connected',key))
+        self.connection=Connection(accept)
+        self.connect_button.setEnabled(False)
+        self.status.setText('Подтвердите подключение в OpenRouter. Анализ видео не запускается.')
+        def wait():
+            self.connection.run();self.events.put(('connection_done',self.connection.error))
+        threading.Thread(target=wait,daemon=True).start()
+        QDesktopServices.openUrl(QUrl(self.connection.url))
+
     def pick_folder(self):
         path=QFileDialog.getExistingDirectory(self,'Папка готовых роликов',self.folder.text())
         if path:
@@ -97,6 +119,11 @@ class AutoStudio(QMainWindow):
             try:kind,value=self.events.get_nowait()
             except queue.Empty:return
             if kind=='status':self.status.setText(value)
+            if kind=='connected':
+                self.key.setText(value);self.status.setText('OpenRouter подключён. Платный анализ остаётся выключенным.')
+            if kind=='connection_done':
+                self.connect_button.setEnabled(True)
+                if value:self.status.setText(value)
             if kind=='saved':
                 self.save.setEnabled(True);self.status.setText(value)
             if kind=='clip':
@@ -109,7 +136,11 @@ class AutoStudio(QMainWindow):
                 self.busy=False;self.start.setEnabled(True);self.stop.setEnabled(False);self.progress.setRange(0,100)
                 self.progress.setValue(100 if kind=='done' else 0)
                 if kind=='error':self.status.setText(value)
-                elif value['cloud']:self.status.setText(f"Готово роликов: {value['clips']}. Просмотрите монтаж и сохраните понравившиеся.")
+                elif value['cloud']:
+                    rejected=value.get('rejected',[])
+                    self.status.setText(f"Готово роликов: {value['clips']}. Отклонено после проверок: {len(rejected)}. Просмотрите результат.")
+                    if not value['clips']:
+                        self.detail.setText('Подходящих историй не найдено. '+ '\n'.join(r['reason'] for r in rejected[:5]))
                 else:self.status.setText('Подготовлено: диалоги и кадры всей серии сохранены локально. AI-отбор не запускался: платные запросы выключены.')
 
     def select(self,index):
@@ -153,3 +184,4 @@ class AutoStudio(QMainWindow):
         if self.busy:
             self.cancelled.set();self.status.setText('Останавливаю обработку. Закройте окно после завершения текущего шага.');event.ignore();return
         self.player.stop();self.timer.stop();event.accept()
+        if getattr(self,'connection',None):self.connection.done.set()

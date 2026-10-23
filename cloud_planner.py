@@ -37,6 +37,9 @@ class OpenRouterPlanner:
         self.ledger=json.loads(self.ledger_path.read_text(encoding='utf-8')) if self.ledger_path.exists() else []
 
     def propose(self,packet,frames=(),cancelled=None):
+        return self.request(packet,PROMPT,lambda result:validate_ai_plan(result,packet['duration']),frames,cancelled)
+
+    def request(self,packet,prompt,validate,frames=(),cancelled=None):
         if not self.authorized or not self.key or self.budget<=0:
             raise ValueError('Облачный анализ выключен. Нужны ключ, бюджет и разрешение отправки.')
         text=json.dumps(packet,ensure_ascii=False)
@@ -50,9 +53,9 @@ class OpenRouterPlanner:
             raw=path.read_bytes();hashes.append([stamp,hashlib.sha256(raw).hexdigest()])
             content.extend([{'type':'text','text':f'Source timestamp {stamp:.3f} seconds'},
                 {'type':'image_url','image_url':{'url':'data:image/jpeg;base64,'+base64.b64encode(raw).decode()}}])
-        cache_key=hashlib.sha256(json.dumps([MODEL,PROMPT,packet,hashes],ensure_ascii=False).encode()).hexdigest()
+        cache_key=hashlib.sha256(json.dumps([MODEL,prompt,packet,hashes],ensure_ascii=False).encode()).hexdigest()
         cached=self.folder/(cache_key+'.json')
-        if cached.exists():return validate_ai_plan(json.loads(cached.read_text(encoding='utf-8')),packet['duration'])
+        if cached.exists():return validate(json.loads(cached.read_text(encoding='utf-8')))
         # Conservative reservation: full model context at capped tariff, not an optimistic estimate.
         # Uncertain failed requests retain their reservation and are never retried automatically.
         reserve=REQUEST_RESERVE
@@ -62,7 +65,7 @@ class OpenRouterPlanner:
         entry=dict(request=cache_key,reserved_usd=reserve,status='pending')
         self.ledger.append(entry);atomic_json(self.ledger_path,self.ledger)
         body=dict(model=MODEL,temperature=.2,max_tokens=8192,
-            messages=[{'role':'system','content':PROMPT},{'role':'user','content':content}],
+            messages=[{'role':'system','content':prompt},{'role':'user','content':content}],
             response_format={'type':'json_object'},provider={'require_parameters':True,
             'allow_fallbacks':False,'data_collection':'deny',
             'max_price':{'prompt':.10,'completion':.40,'request':0,'image':IMAGE_PRICE_CAP}})
@@ -75,7 +78,7 @@ class OpenRouterPlanner:
             data=json.loads(raw)
             choice=data['choices'][0]
             if choice.get('finish_reason')!='stop':raise ValueError('AI не завершил план. Автоповтор отключён.')
-            plan=validate_ai_plan(json.loads(choice['message']['content']),packet['duration'])
+            plan=validate(json.loads(choice['message']['content']))
             cost=data.get('usage',{}).get('cost')
             if isinstance(cost,(int,float)) and math.isfinite(cost) and cost>=0:
                 entry['reported_usd']=cost

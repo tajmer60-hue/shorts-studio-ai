@@ -78,7 +78,9 @@ def render_montage(source,candidate,transcript,folder,cancelled,progress=lambda 
     identity=source_key(source);total=probe(source)
     words=transcript.get('words',[])
     from ai_contract import validate_ai_plan
+    evidence={key:candidate[key] for key in ('event_ids','editorial_review','clip_id') if key in candidate}
     candidate=validate_ai_plan(dict(schema=1,candidates=[candidate]),total)['candidates'][0]
+    candidate.update(evidence)
     plan=aligned_segments(candidate,words,total)
     if not 1<=plan['duration']<=180:raise ValueError('Монтаж должен длиться от 1 до 180 секунд.')
     cues=subtitle_cues(remap_words(words,plan))
