@@ -74,7 +74,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     return header+'\n'.join(lines)+'\n'
 
 
-def render_montage(source,candidate,transcript,folder,cancelled,progress=lambda x:None,censor_ops=None,reframe=None,music=None,music_intensity='balanced'):
+def render_montage(source,candidate,transcript,folder,cancelled,progress=lambda x:None,censor_ops=None,reframe=None,music=None,music_intensity='balanced',music_commercial=False,music_platform=None):
     if cancelled.is_set():raise ValueError('Отменено.')
     source=Path(source).resolve();folder=Path(folder).resolve();folder.mkdir(parents=True,exist_ok=True)
     identity=source_key(source);total=probe(source)
@@ -135,7 +135,7 @@ def render_montage(source,candidate,transcript,folder,cancelled,progress=lambda 
     temp=work/(uuid.uuid4().hex+'.partial.mp4')
     from music import license_ok
     from beat_sync import music_chain
-    use_music=music is not None and license_ok(music)
+    use_music=music is not None and license_ok(music,music_commercial,music_platform)
     final=[executable('ffmpeg'),'-v','error','-nostdin','-n','-f','concat','-safe','1','-i',str(listing)]
     if use_music:
         # Dialogue stays master: profanity muting applies to the dialogue branch

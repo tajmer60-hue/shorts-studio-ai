@@ -15,8 +15,8 @@ import numpy as np
 from beat_sync import (INTENSITY, align_music_to_drop, beat_grid, duck_expression,
                        estimate_tempo, intensity_envelope, drop_times, music_chain,
                        onset_envelope, snap_cuts)
-from music import (NOT_CLEARED, default_catalog, import_track, license_ok, load_catalog,
-                   match_tracks, style_hints)
+from music import (CLAIMED_PLATFORM, NOT_CLEARED, default_catalog, import_track,
+                   license_ok, load_catalog, match_tracks, style_hints)
 
 
 def write_click_track(path, bpm=120.0, seconds=4.0, sr=22050, drop_at=2.0):
@@ -42,7 +42,7 @@ class LicensingTests(unittest.TestCase):
         self.assertTrue(catalog['tracks'])
         for track in catalog['tracks']:
             self.assertFalse(track['playable'])
-            self.assertEqual(track['license'], NOT_CLEARED)
+            self.assertIn(track['license'], (NOT_CLEARED, CLAIMED_PLATFORM))
             self.assertFalse(license_ok(track))
 
     def test_with_no_licensed_file_the_renderer_gets_nothing(self):
@@ -146,6 +146,75 @@ class RhythmTests(unittest.TestCase):
         self.assertEqual(align_music_to_drop(5.0, [4.5, 9.0], tolerance=1.5),
                          dict(visual=5.0, musical=4.5, shift=-0.5))
         self.assertIsNone(align_music_to_drop(5.0, [9.0], tolerance=1.5))
+
+
+class LicensingTierTests(unittest.TestCase):
+    """Library v1 is claimed, not verified: the tiers must behave differently."""
+
+    def setUp(self):
+        self._temp = tempfile.TemporaryDirectory(dir=Path.cwd())
+        self.folder = Path(self._temp.name)
+        self.audio = write_click_track(Path(self.folder) / 'bed.wav')
+
+    def tearDown(self):
+        self._temp.cleanup()
+
+    def attach(self, entry, license_id):
+        entry = dict(entry, file=str(self.audio), license=license_id)
+        return entry
+
+    def test_library_v1_ships_claimed_and_unmixable_without_a_file(self):
+        catalog = default_catalog()
+        v1 = [t for t in catalog['tracks'] if t['license'] == CLAIMED_PLATFORM]
+        self.assertEqual(len(v1), 20)
+        ids = {t['id'] for t in v1}
+        self.assertIn('f01', ids)
+        self.assertIn('c10', ids)
+        for track in v1:
+            self.assertFalse(license_ok(track))
+            self.assertEqual(track['commercial'], 'requires_verification')
+            self.assertIn('YouTube Shorts', track['platform_restrictions'])
+            self.assertIsNone(track['file'])
+
+    def test_claimed_track_is_mixable_only_non_commercial_on_listed_platforms(self):
+        entry = self.attach(default_catalog()['tracks'][-1], CLAIMED_PLATFORM)
+        self.assertTrue(license_ok(entry, commercial=False, platform='YouTube Shorts'))
+        self.assertTrue(license_ok(entry, commercial=False, platform='TikTok'))
+        self.assertFalse(license_ok(entry, commercial=True, platform='YouTube Shorts'))
+        self.assertFalse(license_ok(entry, commercial=False, platform='Telegram'))
+        self.assertFalse(license_ok(entry, commercial=True))
+
+    def test_verified_track_allows_commercial_and_not_cleared_never_does(self):
+        from music import VERIFIED, NOT_CLEARED
+        verified = self.attach(default_catalog()['tracks'][-1], VERIFIED)
+        self.assertTrue(license_ok(verified, commercial=True, platform='anywhere'))
+        reference = self.attach(default_catalog()['tracks'][0], NOT_CLEARED)
+        self.assertFalse(license_ok(reference, commercial=False, platform='YouTube Shorts'))
+
+    def test_match_tracks_respects_commercial_intent(self):
+        from music import CLAIMED_PLATFORM, save_catalog
+        catalog = load_catalog(self.folder)
+        entry = next(t for t in catalog['tracks'] if t['id'] == 'f01')
+        entry['file'] = str(self.audio)
+        save_catalog(self.folder, catalog)
+        catalog = load_catalog(self.folder)
+        self.assertTrue(match_tracks(catalog, 'dark_phonk', commercial=False,
+                                     platform='YouTube Shorts'))
+        self.assertEqual(match_tracks(catalog, 'dark_phonk', commercial=True), [])
+
+    def test_migration_from_schema_2_keeps_imports_and_adds_library_v1(self):
+        from music import save_catalog, catalog_path
+        catalog = default_catalog()
+        catalog['tracks'] = [t for t in catalog['tracks'] if t['license'] == NOT_CLEARED][:2]
+        catalog['schema'] = 2
+        save_catalog(self.folder, dict(catalog))
+        # force schema 2 on disk
+        import json as _json
+        catalog_path(self.folder).write_text(_json.dumps(catalog, ensure_ascii=False), encoding='utf-8')
+        migrated = load_catalog(self.folder)
+        self.assertEqual(migrated['schema'], 3)
+        self.assertTrue(any(t['license'] == CLAIMED_PLATFORM for t in migrated['tracks']))
+        self.assertEqual(len([t for t in migrated['tracks'] if t['license'] == NOT_CLEARED]), 2)
 
 
 if __name__ == '__main__':

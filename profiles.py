@@ -13,13 +13,14 @@ from speech import atomic_json
 SCHEMA = 1
 
 SUBTITLE_STYLES = ('bold_bottom', 'karaoke_center', 'minimal_top', 'none')
+PLATFORMS = ('YouTube Shorts', 'TikTok', 'Reels')
 EXPORT_PRESETS = {'shorts_1080': dict(width=1080, height=1920, fps=30, crf=20),
                   'shorts_720': dict(width=720, height=1280, fps=30, crf=21)}
 
 
 def default_profiles():
     return dict(schema=SCHEMA, profiles=[
-        dict(id='serial-story', name='Serial Story', mode='serial',
+        dict(id='serial-story', commercial=False, platform='YouTube Shorts', name='Serial Story', mode='serial',
              duration_min=45.0, duration_max=90.0, intensity='balanced',
              aggressiveness='normal', music_moods=['dark_ambient', 'emotional', 'none'],
              music_level_db=-18.0, sfx_intensity='cinematic', subtitle_style='bold_bottom',
@@ -27,7 +28,7 @@ def default_profiles():
              export='shorts_1080', hook_min_score=25,
              title_template='{series} • Часть {part}: {title}',
              description_template='Продолжение в следующей части. Смонтировано из серии локально.'),
-        dict(id='phonk-viral', name='Phonk Viral Edit', mode='viral',
+        dict(id='phonk-viral', commercial=False, platform='YouTube Shorts', name='Phonk Viral Edit', mode='viral',
              duration_min=20.0, duration_max=45.0, intensity='aggressive',
              aggressiveness='fast', music_moods=['aggressive_phonk', 'dark_phonk', 'electronic_synthwave'],
              music_level_db=-12.0, sfx_intensity='aggressive', subtitle_style='karaoke_center',
@@ -35,7 +36,7 @@ def default_profiles():
              export='shorts_1080', hook_min_score=40,
              title_template='{title} #shorts',
              description_template='Динамичный эдит. Музыка добавлена только из лицензированной библиотеки.'),
-        dict(id='cinematic-drama', name='Cinematic Drama', mode='viral',
+        dict(id='cinematic-drama', commercial=False, platform='YouTube Shorts', name='Cinematic Drama', mode='viral',
              duration_min=30.0, duration_max=75.0, intensity='cinematic',
              aggressiveness='soft', music_moods=['emotional', 'cinematic_epic', 'dark_ambient'],
              music_level_db=-16.0, sfx_intensity='cinematic', subtitle_style='minimal_top',
@@ -90,6 +91,10 @@ def validate(profile):
         raise ValueError('Неизвестный стиль субтитров: ' + str(profile['subtitle_style']))
     if profile.get('export', 'shorts_1080') not in EXPORT_PRESETS:
         raise ValueError('Неизвестный пресет экспорта: ' + str(profile['export']))
+    if profile.get('platform', 'YouTube Shorts') not in PLATFORMS:
+        raise ValueError('Неизвестная платформа публикации: ' + str(profile['platform']))
+    if not isinstance(profile.get('commercial', False), bool):
+        raise ValueError('Признак коммерческой публикации должен быть булевым.')
     return profile
 
 
@@ -117,5 +122,7 @@ def profile_to_settings(profile):
                 censor=profile.get('censor', 'mute_approved'),
                 export=profile.get('export', 'shorts_1080'),
                 hook_min_score=int(profile.get('hook_min_score', 25)),
+                commercial=bool(profile.get('commercial', False)),
+                platform=profile.get('platform', 'YouTube Shorts'),
                 title_template=profile.get('title_template', '{title}'),
                 description_template=profile.get('description_template', ''))

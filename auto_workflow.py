@@ -244,12 +244,17 @@ def _finish_and_render(source,transcript,manifest,project,result,ops,reframe,
     catalog=music_lib.load_catalog(root/'music')
     moods=list(settings.get('music_moods') or [])
     intensity=settings.get('intensity','balanced')
+    commercial=bool(settings.get('commercial',False))
+    platform=settings.get('platform','YouTube Shorts')
     track=None
     for mood in moods:
-        found=music_lib.match_tracks(catalog,mood,limit=1)
+        found=music_lib.match_tracks(catalog,mood,limit=1,commercial=commercial,platform=platform)
         if found:track,mood_used=found[0],mood;break
     else:mood_used=moods[0] if moods else 'none'
     if moods and track is None:
+        if commercial:
+            status('Коммерческая публикация: треки со статусом «заявлено для платформ» не '
+                   'допускаются без проверенной лицензии. Ролик останется с оригинальной дорожкой.')
         status('Лицензированной музыки под выбранные настроения нет: ролик останется '
                'с оригинальной дорожкой. Стилевые ориентиры: '
                +'; '.join(t['title'] for t in music_lib.style_hints(catalog,moods[0])[:3]))
@@ -262,7 +267,7 @@ def _finish_and_render(source,transcript,manifest,project,result,ops,reframe,
                   and c['start']<candidate['source_segments'][-1]['out']]
         sfx=hook_mod.sfx_plan(hook,mood_used,intensity,dialogue,
                               sum(s['out']-s['in'] for s in candidate['source_segments']))
-        video=render_montage(source,candidate,transcript,project/'renders',cancelled,censor_ops=ops,reframe=reframe,music=track,music_intensity=intensity)
+        video=render_montage(source,candidate,transcript,project/'renders',cancelled,censor_ops=ops,reframe=reframe,music=track,music_intensity=intensity,music_commercial=commercial,music_platform=platform)
         # Report what was actually applied, read back from the rendered artifact.
         try:censor=json.loads((video.parent/'montage.json').read_text(encoding='utf-8')).get('censor',{})
         except (OSError,ValueError,KeyError):censor={}
