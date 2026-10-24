@@ -10,7 +10,7 @@ from PySide6.QtCore import QTimer,QUrl,Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,
     QLineEdit,QFileDialog,QListWidget,QListWidgetItem,QMessageBox,QCheckBox,QComboBox,QDoubleSpinBox,
-    QGroupBox,QProgressBar,QSlider,QStackedWidget)
+    QGroupBox,QProgressBar,QSlider,QStackedWidget,QInputDialog)
 from PySide6.QtMultimedia import QMediaPlayer,QAudioOutput
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from auto_workflow import PROVIDERS,create_clips
@@ -92,6 +92,18 @@ class AutoStudio(QMainWindow):
                               'поэтому результат помечается как низкая уверенность и требует просмотра. '
                               'Если субъект не помещается в честное вертикальное окно — размытый фон, не чёрные полосы.'))
         layout.addWidget(reframe_box)
+        music_box=QGroupBox('Музыка и лицензии — без файла и лицензии трек не звучит');mubox=QVBoxLayout(music_box)
+        self.tracks=QListWidget();self.tracks.setMaximumHeight(110);mubox.addWidget(self.tracks)
+        mrow=QHBoxLayout()
+        import_btn=QPushButton('Прикрепить файл к выбранному треку');import_btn.clicked.connect(self.import_music)
+        mrow.addWidget(import_btn)
+        refresh=QPushButton('Обновить список');refresh.clicked.connect(self.refresh_tracks);mrow.addWidget(refresh)
+        mubox.addLayout(mrow)
+        mubox.addWidget(QLabel('Треки из подборок помечены «заявлено для платформ»: некоммерчески и только '
+                               'на указанных платформах, и только после прикрепления вашего файла. '
+                               'Коммерция требует проверенной лицензии.'))
+        layout.addWidget(music_box)
+        self.refresh_tracks()
         censor_box=QGroupBox('Спорные слова — глушатся только после вашего выбора');cbox=QVBoxLayout(censor_box)
         self.profanity=QListWidget();self.profanity.setMaximumHeight(120)
         self.profanity.addItem('Список появится после локальной подготовки серии.')
@@ -148,6 +160,40 @@ class AutoStudio(QMainWindow):
         self.aggr.setCurrentIndex({'soft':0,'normal':1,'fast':2}[settings['aggressiveness']])
         self.intensity.setCurrentIndex({'cinematic':0,'balanced':1,'aggressive':2}[settings['intensity']])
         self.profile_settings=settings
+
+    def refresh_tracks(self):
+        import music as music_lib
+        self.music_catalog=music_lib.load_catalog(self.root/'music')
+        self.tracks.clear()
+        for track in self.music_catalog['tracks']:
+            state='файл есть' if music_lib.license_ok(track) else ('заявлено, нет файла'
+                    if track['license']=='CLAIMED_PLATFORM' else 'ориентир, не очищено')
+            item=QListWidgetItem(f"{track['title']} — {track['artist']} [{track['license']}] ({state})")
+            item.setData(Qt.ItemDataRole.UserRole,track['id'])
+            self.tracks.addItem(item)
+
+    def import_music(self):
+        import music as music_lib
+        row=self.tracks.currentRow()
+        if not 0<=row<self.tracks.count():
+            self.status.setText('Выберите трек в списке.');return
+        track_id=self.tracks.item(row).data(Qt.ItemDataRole.UserRole)
+        path,_=QFileDialog.getOpenFileName(self,'Лицензированный аудиофайл трека','',
+                                           'Аудио (*.mp3 *.wav *.ogg *.m4a *.flac)')
+        if not path:return
+        license_id,ok=QInputDialog.getText(self,'Лицензия',
+            'Название лицензии и источник (например, Mixkit Free License, https://...):')
+        if not ok or not license_id.strip():
+            self.status.setText('Без названия лицензии импорт отклоняется.');return
+        attribution=QMessageBox.question(self,'Атрибуция','Требуется ли указывать автора в описании?')==QMessageBox.StandardButton.Yes
+        entry=next(t for t in self.music_catalog['tracks'] if t['id']==track_id)
+        try:
+            music_lib.import_track(self.root/'music',path,entry['title'],entry['artist'],
+                license_id.strip(),'',entry.get('moods',[]) or ['none'],attribution_required=attribution)
+        except ValueError as error:
+            QMessageBox.warning(self,'Музыка',str(error));return
+        self.refresh_tracks()
+        self.status.setText('Трек прикреплён и станет доступен для микса в своих настроениях.')
 
     def pick_reference(self):
         path,_=QFileDialog.getOpenFileName(self,'Референс монтажа','','Видео (*.mp4 *.mkv *.mov *.webm)')

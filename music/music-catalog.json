@@ -1,0 +1,766 @@
+{
+  "schema": 3,
+  "tracks": [
+    {
+      "id": "ref:montagem-coma",
+      "title": "Montagem Coma",
+      "artist": "ANDROMEDA, elysian.",
+      "moods": [
+        "dark_phonk"
+      ],
+      "use": "Тёмные повороты, угрозы, мощные появления персонажей",
+      "playable": false,
+      "license": "NOT_CLEARED",
+      "attribution_required": null,
+      "platform_restrictions": [],
+      "source": "style reference",
+      "file": null,
+      "note": "Список собран по подборкам EditLibrary и Spotify от 25.10.2026 как стилевой ориентир. Это не подтверждённый мировой топ и не разрешение на использование. Назначения сцен — монтажная рекомендация, а не статистика эффективности."
+    },
+    {
+      "id": "ref:passo-bem-solto-(slowed)",
+      "title": "Passo Bem Solto (Slowed)",
+      "artist": "ATLXS",
+      "moods": [
+        "aggressive_phonk"
+      ],
+      "use": "Самоуверенные герои, стильные сцены, реакции",
+      "playable": false,
+      "license": "NOT_CLEARED",
+      "attribution_required": null,
+      "platform_restrictions": [],
+      "source": "style reference",
+      "file": null,
+      "note": "Список собран по подборкам EditLibrary и Spotify от 25.10.2026 как стилевой ориентир. Это не подтверждённый мировой топ и не разрешение на использование. Назначения сцен — монтажная рекомендация, а не статистика эффективности."
+    },
+    {
+      "id": "ref:los-voltaje",
+      "title": "Los Voltaje",
+      "artist": "Sayfalse, Yb Wasg'ood, Ariis",
+      "moods": [
+        "aggressive_phonk"
+      ],
+      "use": "Активные сцены, быстрые переходы, демонстрация силы",
+      "playable": false,
+      "license": "NOT_CLEARED",
+      "attribution_required": null,
+      "platform_restrictions": [],
+      "source": "style reference",
+      "file": null,
+      "note": "Список собран по подборкам EditLibrary и Spotify от 25.10.2026 как стилевой ориентир. Это не подтверждённый мировой топ и не разрешение на использование. Назначения сцен — монтажная рекомендация, а не статистика эффективности."
+    },
+    {
+      "id": "ref:montagem-tomada-(slowed)",
+      "title": "Montagem Tomada (Slowed)",
+      "artist": "MXZI",
+      "moods": [
+        "dark_phonk"
+      ],
+      "use": "Напряжённые диалоги с переходом к действию",
+      "playable": false,
+      "license": "NOT_CLEARED",
+      "attribution_required": null,
+      "platform_restrictions": [],
+      "source": "style reference",
+      "file": null,
+      "note": "Список собран по подборкам EditLibrary и Spotify от 25.10.2026 как стилевой ориентир. Это не подтверждённый мировой топ и не разрешение на использование. Назначения сцен — монтажная рекомендация, а не статистика эффективности."
+    },
+    {
+      "id": "ref:taka-la-dentro",
+      "title": "Taka La Dentro",
+      "artist": "SEKIMANE, shonci, Mc Gw",
+      "moods": [
+        "aggressive_phonk"
+      ],
+      "use": "Энергичные противостояния и неожиданные развязки",
+      "playable": false,
+      "license": "NOT_CLEARED",
+      "attribution_required": null,
+      "platform_restrictions": [],
+      "source": "style reference",
+      "file": null,
+      "note": "Список собран по подборкам EditLibrary и Spotify от 25.10.2026 как стилевой ориентир. Это не подтверждённый мировой топ и не разрешение на использование. Назначения сцен — монтажная рекомендация, а не статистика эффективности."
+    },
+    {
+      "id": "ref:montagem-rugada",
+      "title": "Montagem Rugada",
+      "artist": "JXNDRO, sayfalse, cape",
+      "moods": [
+        "aggressive_phonk"
+      ],
+      "use": "Экшен, столкновения, резкие кульминации",
+      "playable": false,
+      "license": "NOT_CLEARED",
+      "attribution_required": null,
+      "platform_restrictions": [],
+      "source": "style reference",
+      "file": null,
+      "note": "Список собран по подборкам EditLibrary и Spotify от 25.10.2026 как стилевой ориентир. Это не подтверждённый мировой топ и не разрешение на использование. Назначения сцен — монтажная рекомендация, а не статистика эффективности."
+    },
+    {
+      "id": "ref:montagem-xonada",
+      "title": "Montagem Xonada",
+      "artist": "MXZI, Dj Samir, DJ Javi26",
+      "moods": [
+        "electronic_synthwave"
+      ],
+      "use": "Быстрые музыкальные эдиты и динамика",
+      "playable": false,
+      "license": "NOT_CLEARED",
+      "attribution_required": null,
+      "platform_restrictions": [],
+      "source": "style reference",
+      "file": null,
+      "note": "Список собран по подборкам EditLibrary и Spotify от 25.10.2026 как стилевой ориентир. Это не подтверждённый мировой топ и не разрешение на использование. Назначения сцен — монтажная рекомендация, а не статистика эффективности."
+    },
+    {
+      "id": "ref:no-batidão-(slowed)",
+      "title": "No Batidão (Slowed)",
+      "artist": "ZXKAI, slxughter",
+      "moods": [
+        "dark_ambient"
+      ],
+      "use": "Напряжённые, атмосферные сцены",
+      "playable": false,
+      "license": "NOT_CLEARED",
+      "attribution_required": null,
+      "platform_restrictions": [],
+      "source": "style reference",
+      "file": null,
+      "note": "Список собран по подборкам EditLibrary и Spotify от 25.10.2026 как стилевой ориентир. Это не подтверждённый мировой топ и не разрешение на использование. Назначения сцен — монтажная рекомендация, а не статистика эффективности."
+    },
+    {
+      "id": "ref:montagem-guerreiro-(slowed)",
+      "title": "Montagem Guerreiro (Slowed)",
+      "artist": "Avenxir, SUNJI",
+      "moods": [
+        "cinematic_epic"
+      ],
+      "use": "Героические появления, сила, решительные действия",
+      "playable": false,
+      "license": "NOT_CLEARED",
+      "attribution_required": null,
+      "platform_restrictions": [],
+      "source": "style reference",
+      "file": null,
+      "note": "Список собран по подборкам EditLibrary и Spotify от 25.10.2026 как стилевой ориентир. Это не подтверждённый мировой топ и не разрешение на использование. Назначения сцен — монтажная рекомендация, а не статистика эффективности."
+    },
+    {
+      "id": "ref:montagem-pegadora-(slowed)",
+      "title": "Montagem Pegadora (Slowed)",
+      "artist": "Rubikdice, Chilx, WAA",
+      "moods": [
+        "aggressive_phonk"
+      ],
+      "use": "Эффектные раскрытия персонажей и кульминации",
+      "playable": false,
+      "license": "NOT_CLEARED",
+      "attribution_required": null,
+      "platform_restrictions": [],
+      "source": "style reference",
+      "file": null,
+      "note": "Список собран по подборкам EditLibrary и Spotify от 25.10.2026 как стилевой ориентир. Это не подтверждённый мировой топ и не разрешение на использование. Назначения сцен — монтажная рекомендация, а не статистика эффективности."
+    },
+    {
+      "id": "ref:pray-for-me",
+      "title": "Pray for Me",
+      "artist": "The Weeknd, Kendrick Lamar",
+      "moods": [
+        "cinematic_epic"
+      ],
+      "use": "Герои, решительные действия, драматичные появления",
+      "playable": false,
+      "license": "NOT_CLEARED",
+      "attribution_required": null,
+      "platform_restrictions": [],
+      "source": "style reference",
+      "file": null,
+      "note": "Список собран по подборкам EditLibrary и Spotify от 25.10.2026 как стилевой ориентир. Это не подтверждённый мировой топ и не разрешение на использование. Назначения сцен — монтажная рекомендация, а не статистика эффективности."
+    },
+    {
+      "id": "ref:time-back",
+      "title": "Time Back",
+      "artist": "Sinny, 7vvch",
+      "moods": [
+        "dark_ambient"
+      ],
+      "use": "Мрачная атмосфера, ожидание, тайна",
+      "playable": false,
+      "license": "NOT_CLEARED",
+      "attribution_required": null,
+      "platform_restrictions": [],
+      "source": "style reference",
+      "file": null,
+      "note": "Список собран по подборкам EditLibrary и Spotify от 25.10.2026 как стилевой ориентир. Это не подтверждённый мировой топ и не разрешение на использование. Назначения сцен — монтажная рекомендация, а не статистика эффективности."
+    },
+    {
+      "id": "ref:brain-stew",
+      "title": "Brain Stew",
+      "artist": "Green Day",
+      "moods": [
+        "dark_phonk"
+      ],
+      "use": "Угрожающие герои, конфликты",
+      "playable": false,
+      "license": "NOT_CLEARED",
+      "attribution_required": null,
+      "platform_restrictions": [],
+      "source": "style reference",
+      "file": null,
+      "note": "Список собран по подборкам EditLibrary и Spotify от 25.10.2026 как стилевой ориентир. Это не подтверждённый мировой топ и не разрешение на использование. Назначения сцен — монтажная рекомендация, а не статистика эффективности."
+    },
+    {
+      "id": "ref:purple-rain",
+      "title": "Purple Rain",
+      "artist": "Prince",
+      "moods": [
+        "emotional"
+      ],
+      "use": "Трагические и эмоциональные сцены",
+      "playable": false,
+      "license": "NOT_CLEARED",
+      "attribution_required": null,
+      "platform_restrictions": [],
+      "source": "style reference",
+      "file": null,
+      "note": "Список собран по подборкам EditLibrary и Spotify от 25.10.2026 как стилевой ориентир. Это не подтверждённый мировой топ и не разрешение на использование. Назначения сцен — монтажная рекомендация, а не статистика эффективности."
+    },
+    {
+      "id": "ref:dancing-on-my-own",
+      "title": "Dancing On My Own",
+      "artist": "Robyn",
+      "moods": [
+        "emotional"
+      ],
+      "use": "Одиночество, расставание, тяжёлый выбор",
+      "playable": false,
+      "license": "NOT_CLEARED",
+      "attribution_required": null,
+      "platform_restrictions": [],
+      "source": "style reference",
+      "file": null,
+      "note": "Список собран по подборкам EditLibrary и Spotify от 25.10.2026 как стилевой ориентир. Это не подтверждённый мировой топ и не разрешение на использование. Назначения сцен — монтажная рекомендация, а не статистика эффективности."
+    },
+    {
+      "id": "ref:back-to-friends",
+      "title": "Back to Friends",
+      "artist": "sombr",
+      "moods": [
+        "emotional"
+      ],
+      "use": "Отношения, воспоминания, эмоциональные эдиты",
+      "playable": false,
+      "license": "NOT_CLEARED",
+      "attribution_required": null,
+      "platform_restrictions": [],
+      "source": "style reference",
+      "file": null,
+      "note": "Список собран по подборкам EditLibrary и Spotify от 25.10.2026 как стилевой ориентир. Это не подтверждённый мировой топ и не разрешение на использование. Назначения сцен — монтажная рекомендация, а не статистика эффективности."
+    },
+    {
+      "id": "ref:the-reason",
+      "title": "The Reason",
+      "artist": "Hoobastank",
+      "moods": [
+        "emotional"
+      ],
+      "use": "Раскаяние, прощение, переживания",
+      "playable": false,
+      "license": "NOT_CLEARED",
+      "attribution_required": null,
+      "platform_restrictions": [],
+      "source": "style reference",
+      "file": null,
+      "note": "Список собран по подборкам EditLibrary и Spotify от 25.10.2026 как стилевой ориентир. Это не подтверждённый мировой топ и не разрешение на использование. Назначения сцен — монтажная рекомендация, а не статистика эффективности."
+    },
+    {
+      "id": "ref:poker-face",
+      "title": "Poker Face",
+      "artist": "Lady Gaga",
+      "moods": [
+        "comedy_ironic"
+      ],
+      "use": "Ирония, неожиданные реакции, комедия",
+      "playable": false,
+      "license": "NOT_CLEARED",
+      "attribution_required": null,
+      "platform_restrictions": [],
+      "source": "style reference",
+      "file": null,
+      "note": "Список собран по подборкам EditLibrary и Spotify от 25.10.2026 как стилевой ориентир. Это не подтверждённый мировой топ и не разрешение на использование. Назначения сцен — монтажная рекомендация, а не статистика эффективности."
+    },
+    {
+      "id": "ref:after-dark",
+      "title": "After Dark",
+      "artist": "Mr.Kitty",
+      "moods": [
+        "electronic_synthwave"
+      ],
+      "use": "Атмосферные стильные эдиты",
+      "playable": false,
+      "license": "NOT_CLEARED",
+      "attribution_required": null,
+      "platform_restrictions": [],
+      "source": "style reference",
+      "file": null,
+      "note": "Список собран по подборкам EditLibrary и Spotify от 25.10.2026 как стилевой ориентир. Это не подтверждённый мировой топ и не разрешение на использование. Назначения сцен — монтажная рекомендация, а не статистика эффективности."
+    },
+    {
+      "id": "ref:memory-reboot",
+      "title": "Memory Reboot",
+      "artist": "VØJ & Narvent",
+      "moods": [
+        "electronic_synthwave"
+      ],
+      "use": "Динамичные монтажные переходы",
+      "playable": false,
+      "license": "NOT_CLEARED",
+      "attribution_required": null,
+      "platform_restrictions": [],
+      "source": "style reference",
+      "file": null,
+      "note": "Список собран по подборкам EditLibrary и Spotify от 25.10.2026 как стилевой ориентир. Это не подтверждённый мировой топ и не разрешение на использование. Назначения сцен — монтажная рекомендация, а не статистика эффективности."
+    },
+    {
+      "id": "ref:little-dark-age",
+      "title": "Little Dark Age",
+      "artist": "MGMT",
+      "moods": [
+        "dark_ambient"
+      ],
+      "use": "Иронично-мрачные сюжетные моменты",
+      "playable": false,
+      "license": "NOT_CLEARED",
+      "attribution_required": null,
+      "platform_restrictions": [],
+      "source": "style reference",
+      "file": null,
+      "note": "Список собран по подборкам EditLibrary и Spotify от 25.10.2026 как стилевой ориентир. Это не подтверждённый мировой топ и не разрешение на использование. Назначения сцен — монтажная рекомендация, а не статистика эффективности."
+    },
+    {
+      "id": "f01",
+      "title": "Montagem Coma (Slowed)",
+      "artist": "ANDROMEDA, elysian.",
+      "moods": [
+        "dark_phonk"
+      ],
+      "use": "Funk / Bass",
+      "playable": false,
+      "license": "CLAIMED_PLATFORM",
+      "attribution_required": null,
+      "platform_restrictions": [
+        "TikTok",
+        "YouTube Shorts"
+      ],
+      "commercial": "requires_verification",
+      "source": "customer library v1 (2026-10-25)",
+      "file": null,
+      "license_name": "DEFAULT_LIBRARY_OK (заявлено заказчиком)",
+      "note": "Заявлено: разрешено для TikTok/Shorts. Коммерческое использование требует проверки. Право на встраивание записи в файл не подтверждено."
+    },
+    {
+      "id": "f02",
+      "title": "Passo Bem Solto (Slowed)",
+      "artist": "ATLXS.",
+      "moods": [
+        "aggressive_phonk"
+      ],
+      "use": "Funk / Groove",
+      "playable": false,
+      "license": "CLAIMED_PLATFORM",
+      "attribution_required": null,
+      "platform_restrictions": [
+        "TikTok",
+        "YouTube Shorts"
+      ],
+      "commercial": "requires_verification",
+      "source": "customer library v1 (2026-10-25)",
+      "file": null,
+      "license_name": "DEFAULT_LIBRARY_OK (заявлено заказчиком)",
+      "note": "Заявлено: разрешено для TikTok/Shorts. Коммерческое использование требует проверки. Право на встраивание записи в файл не подтверждено."
+    },
+    {
+      "id": "f03",
+      "title": "Los Voltaje",
+      "artist": "Sayfalse, Yb Wasg'ood, Ariis.",
+      "moods": [
+        "aggressive_phonk"
+      ],
+      "use": "Funk / High Energy",
+      "playable": false,
+      "license": "CLAIMED_PLATFORM",
+      "attribution_required": null,
+      "platform_restrictions": [
+        "TikTok",
+        "YouTube Shorts"
+      ],
+      "commercial": "requires_verification",
+      "source": "customer library v1 (2026-10-25)",
+      "file": null,
+      "license_name": "DEFAULT_LIBRARY_OK (заявлено заказчиком)",
+      "note": "Заявлено: разрешено для TikTok/Shorts. Коммерческое использование требует проверки. Право на встраивание записи в файл не подтверждено."
+    },
+    {
+      "id": "f04",
+      "title": "Montagem Tomada (Slowed)",
+      "artist": "MXZI.",
+      "moods": [
+        "dark_phonk"
+      ],
+      "use": "Funk / Mid Tempo",
+      "playable": false,
+      "license": "CLAIMED_PLATFORM",
+      "attribution_required": null,
+      "platform_restrictions": [
+        "TikTok",
+        "YouTube Shorts"
+      ],
+      "commercial": "requires_verification",
+      "source": "customer library v1 (2026-10-25)",
+      "file": null,
+      "license_name": "DEFAULT_LIBRARY_OK (заявлено заказчиком)",
+      "note": "Заявлено: разрешено для TikTok/Shorts. Коммерческое использование требует проверки. Право на встраивание записи в файл не подтверждено."
+    },
+    {
+      "id": "f05",
+      "title": "Taka La Dentro",
+      "artist": "SEKIMANE, shonci, Mc Gw.",
+      "moods": [
+        "aggressive_phonk"
+      ],
+      "use": "Funk / Latin Groove",
+      "playable": false,
+      "license": "CLAIMED_PLATFORM",
+      "attribution_required": null,
+      "platform_restrictions": [
+        "TikTok",
+        "YouTube Shorts"
+      ],
+      "commercial": "requires_verification",
+      "source": "customer library v1 (2026-10-25)",
+      "file": null,
+      "license_name": "DEFAULT_LIBRARY_OK (заявлено заказчиком)",
+      "note": "Заявлено: разрешено для TikTok/Shorts. Коммерческое использование требует проверки. Право на встраивание записи в файл не подтверждено."
+    },
+    {
+      "id": "f06",
+      "title": "Montagem Rugada (Slowed)",
+      "artist": "JXNDRO, sayfalse, cape.",
+      "moods": [
+        "aggressive_phonk"
+      ],
+      "use": "Funk / Heavy Bass",
+      "playable": false,
+      "license": "CLAIMED_PLATFORM",
+      "attribution_required": null,
+      "platform_restrictions": [
+        "TikTok",
+        "YouTube Shorts"
+      ],
+      "commercial": "requires_verification",
+      "source": "customer library v1 (2026-10-25)",
+      "file": null,
+      "license_name": "DEFAULT_LIBRARY_OK (заявлено заказчиком)",
+      "note": "Заявлено: разрешено для TikTok/Shorts. Коммерческое использование требует проверки. Право на встраивание записи в файл не подтверждено."
+    },
+    {
+      "id": "f07",
+      "title": "Montagem Xonada (Slowed)",
+      "artist": "MXZI, Dj Samir, DJ Javi26.",
+      "moods": [
+        "electronic_synthwave"
+      ],
+      "use": "Funk / Dance",
+      "playable": false,
+      "license": "CLAIMED_PLATFORM",
+      "attribution_required": null,
+      "platform_restrictions": [
+        "TikTok",
+        "YouTube Shorts"
+      ],
+      "commercial": "requires_verification",
+      "source": "customer library v1 (2026-10-25)",
+      "file": null,
+      "license_name": "DEFAULT_LIBRARY_OK (заявлено заказчиком)",
+      "note": "Заявлено: разрешено для TikTok/Shorts. Коммерческое использование требует проверки. Право на встраивание записи в файл не подтверждено."
+    },
+    {
+      "id": "f08",
+      "title": "No Batidão (Slowed)",
+      "artist": "ZXKAI, slxughter.",
+      "moods": [
+        "dark_ambient"
+      ],
+      "use": "Funk / Brazilian Bass",
+      "playable": false,
+      "license": "CLAIMED_PLATFORM",
+      "attribution_required": null,
+      "platform_restrictions": [
+        "TikTok",
+        "YouTube Shorts"
+      ],
+      "commercial": "requires_verification",
+      "source": "customer library v1 (2026-10-25)",
+      "file": null,
+      "license_name": "DEFAULT_LIBRARY_OK (заявлено заказчиком)",
+      "note": "Заявлено: разрешено для TikTok/Shorts. Коммерческое использование требует проверки. Право на встраивание записи в файл не подтверждено."
+    },
+    {
+      "id": "f09",
+      "title": "Montagem Guerreiro (Slowed)",
+      "artist": "Avenxir, SUNJI.",
+      "moods": [
+        "cinematic_epic"
+      ],
+      "use": "Funk / Epic Groove",
+      "playable": false,
+      "license": "CLAIMED_PLATFORM",
+      "attribution_required": null,
+      "platform_restrictions": [
+        "TikTok",
+        "YouTube Shorts"
+      ],
+      "commercial": "requires_verification",
+      "source": "customer library v1 (2026-10-25)",
+      "file": null,
+      "license_name": "DEFAULT_LIBRARY_OK (заявлено заказчиком)",
+      "note": "Заявлено: разрешено для TikTok/Shorts. Коммерческое использование требует проверки. Право на встраивание записи в файл не подтверждено."
+    },
+    {
+      "id": "f10",
+      "title": "Montagem Pegadora (Slowed)",
+      "artist": "Rubikdice, Chilx, WAA.",
+      "moods": [
+        "aggressive_phonk"
+      ],
+      "use": "Funk / Catchy",
+      "playable": false,
+      "license": "CLAIMED_PLATFORM",
+      "attribution_required": null,
+      "platform_restrictions": [
+        "TikTok",
+        "YouTube Shorts"
+      ],
+      "commercial": "requires_verification",
+      "source": "customer library v1 (2026-10-25)",
+      "file": null,
+      "license_name": "DEFAULT_LIBRARY_OK (заявлено заказчиком)",
+      "note": "Заявлено: разрешено для TikTok/Shorts. Коммерческое использование требует проверки. Право на встраивание записи в файл не подтверждено."
+    },
+    {
+      "id": "c01",
+      "title": "After Dark",
+      "artist": "Mr.Kitty.",
+      "moods": [
+        "electronic_synthwave"
+      ],
+      "use": "Cinematic / Synthwave",
+      "playable": false,
+      "license": "CLAIMED_PLATFORM",
+      "attribution_required": null,
+      "platform_restrictions": [
+        "TikTok",
+        "YouTube Shorts"
+      ],
+      "commercial": "requires_verification",
+      "source": "customer library v1 (2026-10-25)",
+      "file": null,
+      "license_name": "DEFAULT_LIBRARY_OK (заявлено заказчиком)",
+      "note": "Заявлено: разрешено для TikTok/Shorts. Коммерческое использование требует проверки. Право на встраивание записи в файл не подтверждено."
+    },
+    {
+      "id": "c02",
+      "title": "Memory Reboot",
+      "artist": "VØJ & Narvent.",
+      "moods": [
+        "dark_ambient"
+      ],
+      "use": "Cinematic / Ambient",
+      "playable": false,
+      "license": "CLAIMED_PLATFORM",
+      "attribution_required": null,
+      "platform_restrictions": [
+        "TikTok",
+        "YouTube Shorts"
+      ],
+      "commercial": "requires_verification",
+      "source": "customer library v1 (2026-10-25)",
+      "file": null,
+      "license_name": "DEFAULT_LIBRARY_OK (заявлено заказчиком)",
+      "note": "Заявлено: разрешено для TikTok/Shorts. Коммерческое использование требует проверки. Право на встраивание записи в файл не подтверждено."
+    },
+    {
+      "id": "c03",
+      "title": "Little Dark Age",
+      "artist": "MGMT.",
+      "moods": [
+        "electronic_synthwave"
+      ],
+      "use": "Indie Pop / Retro",
+      "playable": false,
+      "license": "CLAIMED_PLATFORM",
+      "attribution_required": null,
+      "platform_restrictions": [
+        "TikTok",
+        "YouTube Shorts"
+      ],
+      "commercial": "requires_verification",
+      "source": "customer library v1 (2026-10-25)",
+      "file": null,
+      "license_name": "DEFAULT_LIBRARY_OK (заявлено заказчиком)",
+      "note": "Заявлено: разрешено для TikTok/Shorts. Коммерческое использование требует проверки. Право на встраивание записи в файл не подтверждено."
+    },
+    {
+      "id": "c04",
+      "title": "Time Back",
+      "artist": "Sinny, 7vvch.",
+      "moods": [
+        "emotional"
+      ],
+      "use": "Cinematic / Emotional",
+      "playable": false,
+      "license": "CLAIMED_PLATFORM",
+      "attribution_required": null,
+      "platform_restrictions": [
+        "TikTok",
+        "YouTube Shorts"
+      ],
+      "commercial": "requires_verification",
+      "source": "customer library v1 (2026-10-25)",
+      "file": null,
+      "license_name": "DEFAULT_LIBRARY_OK (заявлено заказчиком)",
+      "note": "Заявлено: разрешено для TikTok/Shorts. Коммерческое использование требует проверки. Право на встраивание записи в файл не подтверждено."
+    },
+    {
+      "id": "c05",
+      "title": "Pray for Me",
+      "artist": "The Weeknd, Kendrick Lamar.",
+      "moods": [
+        "cinematic_epic"
+      ],
+      "use": "R&B / Hip-Hop (Epic)",
+      "playable": false,
+      "license": "CLAIMED_PLATFORM",
+      "attribution_required": null,
+      "platform_restrictions": [
+        "TikTok",
+        "YouTube Shorts"
+      ],
+      "commercial": "requires_verification",
+      "source": "customer library v1 (2026-10-25)",
+      "file": null,
+      "license_name": "DEFAULT_LIBRARY_OK (заявлено заказчиком)",
+      "note": "Заявлено: разрешено для TikTok/Shorts. Коммерческое использование требует проверки. Право на встраивание записи в файл не подтверждено."
+    },
+    {
+      "id": "c06",
+      "title": "Back to Friends",
+      "artist": "sombr.",
+      "moods": [
+        "emotional"
+      ],
+      "use": "Cinematic / Chill",
+      "playable": false,
+      "license": "CLAIMED_PLATFORM",
+      "attribution_required": null,
+      "platform_restrictions": [
+        "TikTok",
+        "YouTube Shorts"
+      ],
+      "commercial": "requires_verification",
+      "source": "customer library v1 (2026-10-25)",
+      "file": null,
+      "license_name": "DEFAULT_LIBRARY_OK (заявлено заказчиком)",
+      "note": "Заявлено: разрешено для TikTok/Shorts. Коммерческое использование требует проверки. Право на встраивание записи в файл не подтверждено."
+    },
+    {
+      "id": "c07",
+      "title": "The Reason",
+      "artist": "Hoobastank.",
+      "moods": [
+        "emotional"
+      ],
+      "use": "Rock / Emotional",
+      "playable": false,
+      "license": "CLAIMED_PLATFORM",
+      "attribution_required": null,
+      "platform_restrictions": [
+        "TikTok",
+        "YouTube Shorts"
+      ],
+      "commercial": "requires_verification",
+      "source": "customer library v1 (2026-10-25)",
+      "file": null,
+      "license_name": "DEFAULT_LIBRARY_OK (заявлено заказчиком)",
+      "note": "Заявлено: разрешено для TikTok/Shorts. Коммерческое использование требует проверки. Право на встраивание записи в файл не подтверждено."
+    },
+    {
+      "id": "c08",
+      "title": "Brain Stew",
+      "artist": "Green Day.",
+      "moods": [
+        "dark_phonk"
+      ],
+      "use": "Punk Rock / High Energy",
+      "playable": false,
+      "license": "CLAIMED_PLATFORM",
+      "attribution_required": null,
+      "platform_restrictions": [
+        "TikTok",
+        "YouTube Shorts"
+      ],
+      "commercial": "requires_verification",
+      "source": "customer library v1 (2026-10-25)",
+      "file": null,
+      "license_name": "DEFAULT_LIBRARY_OK (заявлено заказчиком)",
+      "note": "Заявлено: разрешено для TikTok/Shorts. Коммерческое использование требует проверки. Право на встраивание записи в файл не подтверждено."
+    },
+    {
+      "id": "c09",
+      "title": "Poker Face",
+      "artist": "Lady Gaga.",
+      "moods": [
+        "comedy_ironic"
+      ],
+      "use": "Pop / Dance (Iconic)",
+      "playable": false,
+      "license": "CLAIMED_PLATFORM",
+      "attribution_required": null,
+      "platform_restrictions": [
+        "TikTok",
+        "YouTube Shorts"
+      ],
+      "commercial": "requires_verification",
+      "source": "customer library v1 (2026-10-25)",
+      "file": null,
+      "license_name": "DEFAULT_LIBRARY_OK (заявлено заказчиком)",
+      "note": "Заявлено: разрешено для TikTok/Shorts. Коммерческое использование требует проверки. Право на встраивание записи в файл не подтверждено."
+    },
+    {
+      "id": "c10",
+      "title": "Dancing On My Own",
+      "artist": "Robyn.",
+      "moods": [
+        "emotional"
+      ],
+      "use": "Synth-Pop / Emotional",
+      "playable": false,
+      "license": "CLAIMED_PLATFORM",
+      "attribution_required": null,
+      "platform_restrictions": [
+        "TikTok",
+        "YouTube Shorts"
+      ],
+      "commercial": "requires_verification",
+      "source": "customer library v1 (2026-10-25)",
+      "file": null,
+      "license_name": "DEFAULT_LIBRARY_OK (заявлено заказчиком)",
+      "note": "Заявлено: разрешено для TikTok/Shorts. Коммерческое использование требует проверки. Право на встраивание записи в файл не подтверждено."
+    }
+  ],
+  "limitations": [
+    "Список собран по подборкам EditLibrary и Spotify от 25.10.2026 как стилевой ориентир. Это не подтверждённый мировой топ и не разрешение на использование. Назначения сцен — монтажная рекомендация, а не статистика эффективности.",
+    "Коммерческие композиции не скачиваются и не встраиваются без прав.",
+    "Пока нет ни одного лицензированного файла, рендер идёт с оригинальной дорожкой без музыки."
+  ]
+}
