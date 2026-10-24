@@ -17,6 +17,7 @@ from cloud_planner import OpenRouterPlanner,unique_chronological,REQUEST_RESERVE
 from censor import dictionary,profanity_hits,audio_ops
 from modes import MODE_PROMPTS,plan_for_mode
 from intros import detect_exclusions,AUTO_SKIP,apply_exclusions
+from style_profile import profile_from_reference,rank_with_style,style_targets
 from reframe import plan_reframe,SaliencyBoxSource,ProviderBoxSource
 from providers import (GeminiPlanner,GroqPlanner,FallbackChain,Ledger,ConsentRequired,FreeQuota,
                        FREE_VISION_MODEL,UNKNOWN_TARIFF_RESERVE)
@@ -211,6 +212,26 @@ def _apply_pause_cuts(candidate,cuts):
     return segments
 
 
+def apply_style(source,result,settings,project,cancelled,status):
+    """Re-rank by the reference pacing when the user supplied a reference clip.
+
+    Only pacing transfers: cut density per selected second is compared with the
+    reference median shot length. Nothing is copied from the reference.
+    """
+    reference=(settings or {}).get('reference')
+    if not reference or not result.get('candidates'):return result
+    status('Измеряю стиль референса (локально, без сети)…')
+    profile=profile_from_reference(reference,project/'style')
+    from analysis_lite import analyze as lite_analyze
+    lite=lite_analyze(source,project/'cache'/'lite',cancelled)
+    result=dict(result,candidates=rank_with_style(result['candidates'],profile,
+                                                   lite.get('scene_boundaries',[])))
+    atomic_json(project/'style-applied.json',dict(profile=profile,targets=style_targets(profile)))
+    status(f"Стиль учтён: медианный план эталона {profile.get('median_shot_seconds')} с, "
+           f"темпер {profile.get('cut_rate')} смен/с.")
+    return result
+
+
 def _finish_and_render(source,transcript,manifest,project,result,ops,reframe,
                        cancelled,status,on_clip):
     for c in result['candidates']:
@@ -255,6 +276,7 @@ def create_clips(source,root,key,budget,authorized,cancelled,status,on_clip,
         from ai_contract import validate_ai_plan
         result=validate_ai_plan(raw,manifest['duration'])
         result=apply_exclusions(exclusions['regions'],result)
+        result=apply_style(source,result,settings,project,cancelled,status)
         reframe=build_reframe(source,manifest,project,None,settings,cancelled,status)
         done=_finish_and_render(source,transcript,manifest,project,result,ops,reframe,
                                 cancelled,status,on_clip)
@@ -303,6 +325,7 @@ def create_clips(source,root,key,budget,authorized,cancelled,status,on_clip,
     else:result=dict(schema=1,candidates=[])
     exclusions=detect_and_save(source,transcript,manifest,project,cancelled,status)
     result=apply_exclusions(exclusions['regions'],result)
+    result=apply_style(source,result,settings,project,cancelled,status)
     done=_finish_and_render(source,transcript,manifest,project,result,ops,reframe,
                             cancelled,status,on_clip)
     return dict(prepared=True,cloud=True,mode=mode,clips=done['clips'],project=str(project),

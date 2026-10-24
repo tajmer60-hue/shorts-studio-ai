@@ -66,6 +66,9 @@ class AutoStudio(QMainWindow):
         drow.addWidget(QLabel('Темп:'));self.aggr=QComboBox()
         self.aggr.addItem('мягко','soft');self.aggr.addItem('нормально','normal');self.aggr.addItem('быстро','fast')
         self.aggr.setCurrentIndex(1);drow.addWidget(self.aggr);mbox.addLayout(drow)
+        rrow=QHBoxLayout();self.reference=QLineEdit();self.reference.setPlaceholderText('Референс своего стиля (необязательно): короткий ролик')
+        rrow.addWidget(self.reference,1);pick=QPushButton('Выбрать референс');pick.clicked.connect(self.pick_reference);rrow.addWidget(pick)
+        mbox.addLayout(rrow)
         self.mode_note=QLabel('');self.mode_note.setWordWrap(True);mbox.addWidget(self.mode_note)
         self.mode.currentIndexChanged.connect(self.mode_changed);layout.addWidget(mode_box)
         self.mode_changed(0)
@@ -122,6 +125,10 @@ class AutoStudio(QMainWindow):
         if path:
             self.folder.setText(path);self.settings.write_text(json.dumps(dict(folder=path),ensure_ascii=False),encoding='utf-8')
 
+    def pick_reference(self):
+        path,_=QFileDialog.getOpenFileName(self,'Референс монтажа','','Видео (*.mp4 *.mkv *.mov *.webm)')
+        if path:self.reference.setText(path)
+
     def mode_changed(self,_index):
         value=self.mode.currentData()
         if value=='serial':
@@ -167,6 +174,7 @@ class AutoStudio(QMainWindow):
             self.status.setText('Нижняя граница длительности больше верхней.');return
         settings=dict(provider=provider,budget=budget,training_allowed=self.training.isChecked(),
                     reframe=self.reframe.isChecked(),mode=self.mode.currentData(),
+                    reference=self.reference.text().strip(),
                     duration_min=self.dur_min.value(),duration_max=self.dur_max.value(),
                     aggressiveness=self.aggr.currentData(),**keys)
         self.active_source=source
