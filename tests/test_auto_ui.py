@@ -61,7 +61,7 @@ class AutoUiTests(unittest.TestCase):
         self.window.source.setText(str(video))
         self.window.allowed.setChecked(True)
         self.window.budget.setValue(1.0)
-        self.window.provider_changed('gemini')
+        self.window.provider.setCurrentText('gemini')
         with patch('auto_ui.threading.Thread') as thread:
             self.window.begin()
             thread.assert_not_called()
@@ -73,7 +73,7 @@ class AutoUiTests(unittest.TestCase):
         video.write_bytes(b'not really a video')
         self.window.source.setText(str(video))
         self.window.allowed.setChecked(True)
-        self.window.provider_changed('gemini')
+        self.window.provider.setCurrentText('gemini')
         self.window.keys['gemini_key'].setText('secret')
         self.window.budget.setValue(0)
         with patch('auto_ui.threading.Thread') as thread:
@@ -133,6 +133,65 @@ class AutoUiTests(unittest.TestCase):
             thread.assert_not_called()
         self.assertEqual(len(warnings), 1)
         self.assertIn('неуверенное', warnings[0].lower())
+
+
+    def test_free_is_the_default_and_needs_no_budget(self):
+        self.assertEqual(self.window.provider.currentText(), 'free')
+        self.window.provider_changed('free')
+        self.assertFalse(self.window.budget.isEnabled())
+        self.assertEqual(self.window.budget.value(), 0)
+        self.assertTrue(self.window.training.isVisibleTo(self.window.training.parentWidget()))
+        self.assertIn('запросами в сутки', self.window.quota_label.text())
+
+    def test_training_consent_is_only_offered_for_free_routes(self):
+        self.window.provider_changed('gemini')
+        self.assertFalse(self.window.training.isVisibleTo(self.window.training.parentWidget()))
+        self.assertTrue(self.window.budget.isEnabled())
+        self.window.provider_changed('auto')
+        self.assertTrue(self.window.training.isVisibleTo(self.window.training.parentWidget()))
+
+    def test_free_run_without_training_consent_is_refused(self):
+        video = self.root / 'source.mp4'
+        video.write_bytes(b'not really a video')
+        self.window.source.setText(str(video))
+        self.window.allowed.setChecked(True)
+        self.window.provider.setCurrentText('free')
+        self.window.provider_changed('free')
+        self.window.keys['openrouter_key'].setText('secret')
+        self.window.training.setChecked(False)
+        with patch('auto_ui.threading.Thread') as thread:
+            self.window.begin()
+            thread.assert_not_called()
+        self.assertIn('обработку данных', self.window.status.text())
+        self.assertFalse(self.window.busy)
+
+    def test_consent_and_provider_reach_the_worker_settings(self):
+        video = self.root / 'source.mp4'
+        video.write_bytes(b'not really a video')
+        self.window.source.setText(str(video))
+        self.window.allowed.setChecked(True)
+        self.window.provider.setCurrentText('free')
+        self.window.provider_changed('free')
+        self.window.keys['openrouter_key'].setText('secret')
+        self.window.training.setChecked(True)
+        captured = {}
+        with patch('auto_ui.threading.Thread') as thread:
+            thread.side_effect = lambda target, daemon: captured.update(target=target) or FakeThread()
+            self.window.begin()
+        with patch('auto_ui.create_clips') as create:
+            create.return_value = dict(prepared=True, cloud=False, project='')
+            captured['target']()
+            settings = create.call_args.kwargs['settings']
+        self.assertEqual(settings['provider'], 'free')
+        self.assertTrue(settings['training_allowed'])
+        self.assertEqual(settings['budget'], 0)
+        self.assertEqual(settings['openrouter_key'], 'secret')
+        self.assertNotIn('secret', self.window.status.text())
+
+
+class FakeThread:
+    def start(self):
+        pass
 
 
 if __name__ == '__main__':

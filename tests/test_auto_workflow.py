@@ -9,7 +9,26 @@ import unittest
 
 from auto_workflow import PROVIDERS, build_planner, review_profanity
 from cloud_planner import OpenRouterPlanner
-from providers import ConsentRequired, FallbackChain, GeminiPlanner, GroqPlanner
+from providers import (ConsentRequired, FREE_VISION_MODEL, FallbackChain, GeminiPlanner,
+                       GroqPlanner, QuotaExhausted)
+
+
+class FakeQuota:
+    """Stands in for providers.FreeQuota so these tests never touch the network."""
+
+    def __init__(self, remaining):
+        self.remaining = remaining
+        self.checked = []
+
+    def ensure(self, needed=1, force=False):
+        self.checked.append(needed)
+        if self.remaining < needed:
+            raise QuotaExhausted(f'Бесплатный лимит исчерпан: осталось {self.remaining}.')
+
+    def snapshot(self, force=False):
+        return dict(remaining=self.remaining, limit=50, used=50 - self.remaining,
+                    is_free_tier=True, source='fake')
+
 
 WORDS = [dict(start=0.0, end=0.5, word='привет', probability=0.99),
          dict(start=0.6, end=1.1, word='сука', probability=0.95),
@@ -25,8 +44,8 @@ class PlannerSelectionTests(unittest.TestCase):
     def tearDown(self):
         self._temp.cleanup()
 
-    def build(self, settings, authorized=True, budget=1.0):
-        return build_planner(settings, self.folder, authorized, budget)
+    def build(self, settings, authorized=True, budget=1.0, quota=None):
+        return build_planner(settings, self.folder, authorized, budget, quota=quota)
 
     def test_consent_gates_come_first(self):
         settings = dict(provider='gemini', gemini_key='k')
@@ -38,7 +57,7 @@ class PlannerSelectionTests(unittest.TestCase):
     def test_unknown_provider_is_refused(self):
         with self.assertRaises(ValueError):
             self.build(dict(provider='skynet', gemini_key='k'))
-        self.assertEqual(len(PROVIDERS), 4)
+        self.assertEqual(len(PROVIDERS), 5)
 
     def test_selected_provider_without_a_key_is_refused(self):
         with self.assertRaises(ConsentRequired):
@@ -72,6 +91,43 @@ class PlannerSelectionTests(unittest.TestCase):
         planner = self.build(dict(provider='gemini', gemini_key='k', gemini_model='gemini-2.5-flash'))
         self.assertEqual(planner.model, 'gemini-2.5-flash')
         self.assertGreater(planner.reserve_estimate(), 0)
+
+    def test_free_provider_needs_no_budget_but_needs_training_consent(self):
+        planner = self.build(dict(provider='free', openrouter_key='k', training_allowed=True),
+                             budget=0.0, quota=FakeQuota(36))
+        self.assertTrue(planner.free)
+        self.assertEqual(planner.model, FREE_VISION_MODEL)
+        self.assertEqual(planner.reserve_estimate(), 0.0)
+        self.assertEqual(planner.data_collection, 'allow')
+
+    def test_free_provider_without_training_consent_is_refused(self):
+        with self.assertRaises(ConsentRequired):
+            self.build(dict(provider='free', openrouter_key='k'), budget=0.0, quota=FakeQuota(36))
+
+    def test_free_provider_without_a_key_is_refused(self):
+        with self.assertRaises(ConsentRequired):
+            self.build(dict(provider='free', training_allowed=True), budget=0.0, quota=FakeQuota(36))
+
+    def test_auto_prefers_free_only_when_training_is_allowed(self):
+        permissive = self.build(dict(provider='auto', openrouter_key='k', gemini_key='g',
+                                     training_allowed=True), budget=1.0, quota=FakeQuota(36))
+        self.assertIsInstance(permissive, FallbackChain)
+        self.assertTrue(permissive.planners[0].free)
+        # A user who forbade training must not be routed to a free endpoint.
+        strict = self.build(dict(provider='auto', openrouter_key='k', gemini_key='g'),
+                            budget=1.0, quota=FakeQuota(36))
+        members = strict.planners if isinstance(strict, FallbackChain) else [strict]
+        self.assertFalse(any(getattr(p, 'free', False) for p in members))
+
+    def test_whole_episode_is_checked_against_the_daily_free_quota(self):
+        quota = FakeQuota(5)
+        planner = self.build(dict(provider='free', openrouter_key='k', training_allowed=True),
+                             budget=0.0, quota=quota)
+        with self.assertRaises(QuotaExhausted):
+            planner.quota.ensure(14)
+        self.assertEqual(quota.checked, [14])
+        planner.quota.ensure(3)
+        self.assertEqual(quota.checked, [14, 3])
 
 
 class ProfanityReviewTests(unittest.TestCase):

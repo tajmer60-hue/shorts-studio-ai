@@ -227,5 +227,87 @@ class VisualTests(unittest.TestCase):
         self.assertTrue(any('авторские права' in line for line in result['limitations']))
 
 
+class FakeSafetyPlanner:
+    """Stands in for a vision provider. Records the prompt it was given."""
+
+    def __init__(self, answer):
+        self.answer = answer
+        self.calls = []
+
+    def propose_json(self, packet, frames=(), cancelled=None, task_prompt=None):
+        self.calls.append(dict(packet=packet, frames=list(frames), prompt=task_prompt))
+        if isinstance(self.answer, Exception):
+            raise self.answer
+        return self.answer
+
+
+class TextOnlyPlanner:
+    def propose(self, packet, frames=(), cancelled=None):
+        return dict(schema=1, candidates=[])
+
+
+class ScanTests(unittest.TestCase):
+    FRAMES = [(1.0, 'a.jpg'), (30.0, 'b.jpg')]
+    BOX = dict(x=0.4, y=0.4, w=0.1, h=0.1)
+
+    def scan(self, answer):
+        from censor import scan_with_provider
+        planner = FakeSafetyPlanner(answer)
+        result = scan_with_provider(planner, self.FRAMES, 1920, 1080, 60)
+        return result, planner
+
+    def test_provider_without_a_json_contract_is_refused(self):
+        from censor import scan_with_provider
+        with self.assertRaises(ValueError):
+            scan_with_provider(TextOnlyPlanner(), self.FRAMES, 1920, 1080, 60)
+
+    def test_prompt_forbids_treating_dialogue_subtitles_as_credits(self):
+        from censor import SAFETY_PROMPT
+        self.assertIn('dialogue subtitles', SAFETY_PROMPT)
+        self.assertIn('NOT end credits', SAFETY_PROMPT)
+        self.assertIn('untrusted', SAFETY_PROMPT)
+
+    def test_valid_scan_returns_tracks_that_need_review(self):
+        result, planner = self.scan(dict(schema=1, masks=[
+            dict(t=1.0, category='blood', confidence='high', box=self.BOX),
+            dict(t=30.0, category='nudity', confidence='low', box=self.BOX)]))
+        self.assertEqual(len(result['masks']), 2)
+        self.assertEqual(len(result['tracks']), 2)
+        self.assertTrue(all(track['needs_review'] for track in result['tracks']))
+        self.assertFalse(any(track['approved'] for track in result['tracks']))
+        self.assertEqual(result['frames_sent'], 2)
+        self.assertIn('ручного подтверждения', result['note'])
+        self.assertEqual(planner.calls[0]['packet']['schema'], 1)
+        self.assertEqual(len(planner.calls[0]['frames']), 2)
+
+    def test_empty_answer_is_a_valid_result(self):
+        result, _planner = self.scan(dict(schema=1, masks=[]))
+        self.assertEqual(result['masks'], [])
+        self.assertEqual(result['tracks'], [])
+
+    def test_timestamps_that_were_never_sent_are_rejected(self):
+        with self.assertRaises(ValueError):
+            self.scan(dict(schema=1, masks=[dict(t=45.0, category='blood', box=self.BOX)]))
+
+    def test_out_of_timeline_and_bad_categories_are_rejected(self):
+        with self.assertRaises(ValueError):
+            self.scan(dict(schema=1, masks=[dict(t=999.0, category='blood', box=self.BOX)]))
+        with self.assertRaises(ValueError):
+            self.scan(dict(schema=1, masks=[dict(t=1.0, category='politics', box=self.BOX)]))
+        with self.assertRaises(ValueError):
+            self.scan(dict(schema=2, masks=[]))
+
+    def test_box_outside_the_frame_is_rejected(self):
+        with self.assertRaises(ValueError):
+            self.scan(dict(schema=1, masks=[dict(t=1.0, category='blood',
+                                                 box=dict(x=1.5, y=0.0, w=0.2, h=0.2))]))
+
+    def test_provider_failure_propagates_instead_of_looking_safe(self):
+        from censor import scan_with_provider
+        planner = FakeSafetyPlanner(RuntimeError('модель недоступна'))
+        with self.assertRaises(RuntimeError):
+            scan_with_provider(planner, self.FRAMES, 1920, 1080, 60)
+
+
 if __name__ == '__main__':
     unittest.main()

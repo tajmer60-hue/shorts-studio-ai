@@ -34,7 +34,7 @@ class AutoStudio(QMainWindow):
         row=QHBoxLayout();row.addWidget(self.folder);pick=QPushButton('Папка сохранения');pick.clicked.connect(self.pick_folder);row.addWidget(pick);layout.addLayout(row)
         settings=QGroupBox('Подключение AI — провайдер заменяем, запросов без разрешения нет');opts=QVBoxLayout(settings)
         prow=QHBoxLayout();prow.addWidget(QLabel('Провайдер:'))
-        self.provider=QComboBox();self.provider.addItems(list(PROVIDERS))
+        self.provider=QComboBox();self.provider.addItems(list(PROVIDERS));self.provider.setCurrentText('free')
         self.provider.currentTextChanged.connect(self.provider_changed);prow.addWidget(self.provider,1);opts.addLayout(prow)
         # One row per provider so a hidden key is never silently sent.
         self.key_rows={};self.keys={}
@@ -47,7 +47,12 @@ class AutoStudio(QMainWindow):
             row.addWidget(field,1)
             link=QLabel('<a href="%s">получить ключ</a>'%url);link.setOpenExternalLinks(True);row.addWidget(link)
             opts.addWidget(holder);self.key_rows[name]=holder;self.keys[name]=field
-        self.allowed=QCheckBox('Разрешаю платный анализ и отправку реплик + обзорных кадров выбранному провайдеру');opts.addWidget(self.allowed)
+        self.allowed=QCheckBox('Разрешаю облачный анализ и отправку реплик + обзорных кадров выбранному провайдеру');opts.addWidget(self.allowed)
+        self.training=QCheckBox('Бесплатные модели: разрешаю провайдеру обрабатывать отправленные данные')
+        self.training.setToolTip('Бесплатные эндпоинты OpenRouter недоступны при запрете обработки данных. Платные модели отправляются с запретом (deny).')
+        opts.addWidget(self.training)
+        self.quota_label=QLabel('')
+        self.quota_label.setWordWrap(True);opts.addWidget(self.quota_label)
         row=QHBoxLayout();row.addWidget(QLabel('Лимит проекта, USD:'));self.budget=QDoubleSpinBox();self.budget.setRange(0,20);self.budget.setValue(0);self.budget.setSingleStep(.5);row.addWidget(self.budget);opts.addLayout(row)
         opts.addWidget(QLabel('Пока разрешение выключено: только локальная подготовка. API не вызывается.'));layout.addWidget(settings)
         censor_box=QGroupBox('Спорные слова — глушатся только после вашего выбора');cbox=QVBoxLayout(censor_box)
@@ -57,7 +62,8 @@ class AutoStudio(QMainWindow):
         self.apply_censor=QPushButton('Пересобрать ролики с выбранным глушением');self.apply_censor.setEnabled(False)
         self.apply_censor.clicked.connect(self.rebuild_with_censor);cbox.addWidget(self.apply_censor)
         layout.addWidget(censor_box)
-        self.provider_changed('auto')
+        # Initialise from the combo's actual value, not from an assumed default.
+        self.provider_changed(self.provider.currentText())
         row=QHBoxLayout();self.start=QPushButton('Подготовить серию без расходов');self.start.setStyleSheet('background:#3478f6;font-size:17px;font-weight:700;padding:14px;');self.start.clicked.connect(self.begin);row.addWidget(self.start)
         self.stop=QPushButton('Остановить');self.stop.setEnabled(False);self.stop.clicked.connect(self.cancelled.set);row.addWidget(self.stop);layout.addLayout(row)
         self.allowed.toggled.connect(lambda on:self.start.setText('Создать ролики автоматически' if on else 'Подготовить серию без расходов'))
@@ -96,9 +102,18 @@ class AutoStudio(QMainWindow):
             self.folder.setText(path);self.settings.write_text(json.dumps(dict(folder=path),ensure_ascii=False),encoding='utf-8')
 
     def provider_changed(self,value):
-        wanted={'auto':tuple(self.keys),'gemini':('gemini_key',),'groq':('groq_key',),
-                'openrouter':('openrouter_key',)}.get(value,())
+        wanted={'free':('openrouter_key',),'auto':tuple(self.keys),'gemini':('gemini_key',),
+                'groq':('groq_key',),'openrouter':('openrouter_key',)}.get(value,())
         for name,holder in self.key_rows.items():holder.setVisible(name in wanted)
+        # Free endpoints only work when data processing is allowed, so the choice is explicit.
+        self.training.setVisible(value in ('free','auto'))
+        self.budget.setEnabled(value not in ('free',))
+        if value=='free':
+            self.budget.setValue(0)
+            self.quota_label.setText('Бесплатно: лимит считается запросами в сутки (обычно 50), а не деньгами. '
+                                     'Серия 55 минут — это примерно 14 запросов.')
+        else:
+            self.quota_label.setText('')
         self.key_hint='Нужен ключ: '+', '.join(wanted) if wanted else 'Нужен хотя бы один ключ.'
 
     def begin(self,censor_ops=None):
@@ -108,12 +123,17 @@ class AutoStudio(QMainWindow):
         keys={name:field.text().strip() for name,field in self.keys.items()}
         if not Path(source).is_file():self.status.setText('Выберите существующий видеофайл.');return
         if authorized:
-            required={'auto':tuple(self.keys),'gemini':('gemini_key',),'groq':('groq_key',),
-                      'openrouter':('openrouter_key',)}.get(provider,())
+            required={'free':('openrouter_key',),'auto':tuple(self.keys),'gemini':('gemini_key',),
+                      'groq':('groq_key',),'openrouter':('openrouter_key',)}.get(provider,())
             if not any(keys[name] for name in required):
                 self.status.setText(self.key_hint+' Запрос не отправлен.');return
-            if budget<=0:self.status.setText('Нужен ненулевой лимит проекта: без него расходы неконтролируемы.');return
-        settings=dict(provider=provider,budget=budget,**keys)
+            if provider in ('free','auto') and not self.training.isChecked() and keys['openrouter_key']:
+                self.status.setText('Бесплатные модели требуют разрешения на обработку данных. '
+                                    'Отметьте галочку или выберите платного провайдера.');return
+            # A zero-price model is limited by requests per day, not by money.
+            if provider not in ('free',) and budget<=0:
+                self.status.setText('Нужен ненулевой лимит проекта: без него расходы неконтролируемы.');return
+        settings=dict(provider=provider,budget=budget,training_allowed=self.training.isChecked(),**keys)
         self.active_source=source
         self.player.stop();self.player.setSource(QUrl());self.catalog.clear();self.clips=[];self.save.setEnabled(False)
         from speech import atomic_json

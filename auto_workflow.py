@@ -14,9 +14,10 @@ from render import executable
 from montage_render import run_media,render_montage,aligned_segments
 from cloud_planner import OpenRouterPlanner,unique_chronological,REQUEST_RESERVE
 from censor import dictionary,profanity_hits,audio_ops
-from providers import GeminiPlanner,GroqPlanner,FallbackChain,Ledger,ConsentRequired,UNKNOWN_TARIFF_RESERVE
+from providers import (GeminiPlanner,GroqPlanner,FallbackChain,Ledger,ConsentRequired,FreeQuota,
+                       FREE_VISION_MODEL,UNKNOWN_TARIFF_RESERVE)
 
-PROVIDERS=('auto','gemini','groq','openrouter')
+PROVIDERS=('free','auto','gemini','groq','openrouter')
 
 
 def prepare_episode(source,root,cancelled,status):
@@ -52,24 +53,48 @@ def prepare_episode(source,root,cancelled,status):
     return project,transcript,manifest
 
 
-def build_planner(settings,folder,authorized,budget):
+def build_planner(settings,folder,authorized,budget,quota=None):
     """Create the planner the user approved. `auto` keeps the cheapest first.
+
+    `free` uses a zero-price OpenRouter model, so the scarce resource is the daily
+    REQUEST count, not money: budget may stay 0 and FreeQuota does the guarding.
+    A free model is only offered when the user allowed data collection, because
+    free endpoints are excluded when it is denied.
 
     Groq is text-only, so FallbackChain skips it whenever frames are attached and
     a vision-capable provider is present; that skip is recorded, never silent.
     """
     settings=dict(settings or {})
-    provider=settings.get('provider','auto')
+    provider=settings.get('provider','free')
     if provider not in PROVIDERS:raise ValueError('Неизвестный провайдер: '+str(provider))
     folder=Path(folder)
     gemini=(settings.get('gemini_key') or '').strip()
     groq=(settings.get('groq_key') or '').strip()
     openrouter=(settings.get('openrouter_key') or '').strip()
-    if not authorized or budget<=0:
-        raise ConsentRequired('Облачный анализ выключен: нужны разрешение и ненулевой лимит.')
+    training=bool(settings.get('training_allowed'))
+    if not authorized:
+        raise ConsentRequired('Облачный анализ выключен: нужно явное разрешение отправки материала.')
+    free_wanted=provider in ('free','auto') and openrouter and (provider=='free' or training)
+    if provider=='free' and budget<=0:budget=0.0
+    if provider not in ('free','auto') and budget<=0:
+        raise ConsentRequired('Для платного провайдера нужен ненулевой лимит проекта.')
+
+    def free_planner():
+        if not openrouter:
+            raise ConsentRequired('Для бесплатных моделей нужен ключ OpenRouter (аккаунт бесплатный).')
+        # The user's own consent flag decides; never assume it.
+        return OpenRouterPlanner(openrouter,folder,0,True,
+            model=settings.get('free_model',FREE_VISION_MODEL),training_allowed=training,
+            quota=quota if quota is not None else FreeQuota(openrouter))
+
+    if provider=='free':return free_planner()
     if provider=='openrouter':
         if not openrouter:raise ConsentRequired('Ключ OpenRouter не указан.')
         return OpenRouterPlanner(openrouter,folder,budget,True)
+    if provider=='auto' and free_wanted:
+        # Cheapest consent-compatible option first; paid providers stay as fallback.
+        chain=[free_planner()]
+    else:chain=[]
     ledger=Ledger(folder/'usage.sqlite3',budget)
     planners=[]
     if provider in ('auto','gemini') and gemini:
@@ -78,12 +103,16 @@ def build_planner(settings,folder,authorized,budget):
     if provider in ('auto','groq') and groq:
         planners.append(GroqPlanner(groq,folder,budget,True,
             model=settings.get('groq_model','openai/gpt-oss-120b'),ledger=ledger))
-    if provider=='auto' and openrouter:
+    if provider=='auto' and openrouter and not free_wanted:
         planners.append(OpenRouterPlanner(openrouter,folder,budget,True))
+    planners=chain+planners
     if not planners:
         ledger.close()
         raise ConsentRequired('Для выбранного провайдера нет ключа. Запрос не отправлен.')
-    return planners[0] if len(planners)==1 else FallbackChain(planners)
+    if len(planners)==1:
+        ledger.close()
+        return planners[0]
+    return FallbackChain(planners)
 
 
 def review_profanity(transcript,lexicon_path=None):
@@ -114,6 +143,12 @@ def create_clips(source,root,key,budget,authorized,cancelled,status,on_clip,
     ledger=getattr(planner,'ledger',None)
     fresh=not ledger.rows() if ledger is not None else True
     required=(len(manifest['packets'])+1)*reserve
+    free_quota=getattr(planner,'quota',None)
+    if free_quota is not None:
+        # One episode is windows + a global pass; refuse up front if it cannot fit.
+        free_quota.ensure(len(manifest['packets'])+1)
+        status(f"Бесплатных запросов осталось: {int(free_quota.snapshot().get('remaining') or 0)} "
+               f"на сегодня. На серию нужно {len(manifest['packets'])+1}.")
     if fresh and budget<required:
         raise ValueError(f'Для безопасного резерва всей серии нужен лимит ${required:.2f} '
                          f'({len(manifest["packets"])+1} запросов по ${reserve:.4f}). '

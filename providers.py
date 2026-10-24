@@ -25,6 +25,8 @@ from speech import atomic_json
 GEMINI_URL = 'https://generativelanguage.googleapis.com/v1beta/models/{model}:generateContent'
 GROQ_CHAT_URL = 'https://api.groq.com/openai/v1/chat/completions'
 GROQ_AUDIO_URL = 'https://api.groq.com/openai/v1/audio/transcriptions'
+OPENROUTER_CHAT_URL = 'https://openrouter.ai/api/v1/chat/completions'
+OPENROUTER_KEY_URL = 'https://openrouter.ai/api/v1/key'
 
 # Per-million-token tariffs in USD. `None` means the price was not verified from
 # official documentation, so the estimator reports "unknown" instead of a guess.
@@ -37,7 +39,26 @@ TARIFFS = {
         source='https://console.groq.com/docs/pricing', verified='2026-10-23'),
     'whisper-large-v3-turbo': dict(text=None, image=None, video=None, audio=None, output=None,
         source='https://console.groq.com/docs/pricing', verified='2026-10-23'),
+    # Verified against the live OpenRouter catalog on 2026-10-23 (GET /api/v1/models,
+    # no key required). Free variants cost zero but are limited by REQUESTS PER DAY,
+    # not by money, so FreeQuota below is the real guard for them.
+    'nvidia/nemotron-3.5-super-vl:free': dict(text=0.0, image=0.0, video=0.0, audio=0.0, output=0.0,
+        source='https://openrouter.ai/api/v1/models', verified='2026-10-23'),
+    'nvidia/nemotron-3.5-content-safety:free': dict(text=0.0, image=0.0, video=0.0, audio=0.0, output=0.0,
+        source='https://openrouter.ai/api/v1/models', verified='2026-10-23'),
+    'nex-agi/nex-n2.5-mini': dict(text=0.025, image=0.025, video=None, audio=None, output=0.100,
+        source='https://openrouter.ai/api/v1/models', verified='2026-10-23'),
+    'deepseek/deepseek-v4.1-flash': dict(text=0.020, image=0.020, video=None, audio=None, output=1.000,
+        source='https://openrouter.ai/api/v1/models', verified='2026-10-23'),
+    'z-ai/glm-5.3-flash': dict(text=0.150, image=0.150, video=0.150, audio=None, output=0.500,
+        source='https://openrouter.ai/api/v1/models', verified='2026-10-23'),
+    'google/gemini-2.5-flash-lite': dict(text=0.100, image=0.100, video=0.100, audio=0.300, output=0.400,
+        source='https://openrouter.ai/api/v1/models', verified='2026-10-23'),
 }
+
+# Primary free multimodal planner and the free safety model used by Smart Censor.
+FREE_VISION_MODEL = 'nvidia/nemotron-3.5-super-vl:free'
+FREE_SAFETY_MODEL = 'nvidia/nemotron-3.5-content-safety:free'
 
 # Documented Gemini multimodal accounting, used only to build a conservative
 # reservation. It is an estimate, never a billed amount: the provider reports
@@ -107,6 +128,26 @@ def transport_json(url, payload, headers, timeout=90):
         return error.code, dict(error.headers or {}), body
 
 
+def transport_get(url, headers, timeout=30):
+    """GET transport, injectable in tests exactly like transport_json."""
+    request = urllib.request.Request(url, headers=dict(headers))
+    try:
+        with urllib.request.urlopen(request, timeout=timeout) as response:
+            return response.status, dict(response.headers), response.read(RESPONSE_BYTE_CAP + 1)
+    except urllib.error.HTTPError as error:
+        body = error.read(RESPONSE_BYTE_CAP) if error.fp else b''
+        return error.code, dict(error.headers or {}), body
+
+
+def is_free_model(model):
+    """A model is free when its id says so or every verified tariff component is zero."""
+    if str(model).endswith(':free'):
+        return True
+    tariff = TARIFFS.get(model)
+    return bool(tariff) and all(tariff.get(field) == 0
+                                for field in ('text', 'image', 'video', 'audio', 'output'))
+
+
 def _number(value):
     try:
         result = float(value)
@@ -120,6 +161,59 @@ def quota(headers):
     return dict(remaining_requests=_number(headers.get('x-ratelimit-remaining-requests')),
                 remaining_tokens=_number(headers.get('x-ratelimit-remaining-tokens')),
                 retry_after=_number(headers.get('retry-after')))
+
+
+class FreeQuota:
+    """Live free-tier request budget read from the provider, not from a constant.
+
+    OpenRouter exposes GET /api/v1/key with `free_model_daily_requests`
+    {used, limit, remaining} and `is_free_tier`. Asking the provider is the only
+    honest way to honour "check the available limit before sending": published
+    free-tier numbers change and are not guaranteed per account.
+    """
+
+    def __init__(self, key, transport=transport_get, refresh_seconds=30.0):
+        self.key = (key or '').strip()
+        self.transport = transport
+        self.refresh_seconds = float(refresh_seconds)
+        self._snapshot = None
+        self._fetched_at = 0.0
+        self.warning = None
+
+    def snapshot(self, force=False):
+        now = time.monotonic()
+        if self._snapshot is not None and not force and now - self._fetched_at < self.refresh_seconds:
+            return self._snapshot
+        if not self.key:
+            raise ConsentRequired('API-ключ не указан.')
+        status, _headers, raw = self.transport(OPENROUTER_KEY_URL, {'Authorization': 'Bearer ' + self.key})
+        if status != 200:
+            raise ProviderUnavailable(f'Не удалось прочитать остаток бесплатных запросов: HTTP {status}.')
+        data = json.loads(raw).get('data') or {}
+        daily = data.get('free_model_daily_requests') or {}
+        self._snapshot = dict(used=_number(daily.get('used')), limit=_number(daily.get('limit')),
+                              remaining=_number(daily.get('remaining')),
+                              is_free_tier=bool(data.get('is_free_tier')),
+                              credit_remaining=_number(data.get('limit_remaining')),
+                              source='GET /api/v1/key')
+        self._fetched_at = now
+        self.warning = None
+        return self._snapshot
+
+    def ensure(self, needed=1, force=False):
+        """Refuse BEFORE sending when the daily free budget cannot cover the batch."""
+        info = self.snapshot(force=force)
+        remaining, limit = info.get('remaining'), info.get('limit')
+        if remaining is None:
+            # Unverifiable quota is reported, not silently assumed to be fine.
+            self.warning = 'Провайдер не сообщил остаток бесплатных запросов; лимит не проверен.'
+            return info
+        if remaining < needed:
+            raise QuotaExhausted(f'Бесплатный лимит исчерпан: осталось {int(remaining)} из '
+                                 f'{int(limit or 0)} запросов за сутки (сброс в 00:00 UTC). '
+                                 f'Прогресс сохранён в кэше; повторная отправка не нужна.',
+                                 remaining=info)
+        return info
 
 
 def estimate_tokens(text, frames=()):
@@ -257,11 +351,16 @@ def _frames_payload(frames):
     return parts, hashes
 
 
-def _require_consent(key, budget, authorized):
+def _require_consent(key, budget, authorized, model=None):
     if not authorized:
         raise ConsentRequired('Облачный анализ выключен. Нужно явное разрешение отправки материала.')
     if not key or not key.strip():
         raise ConsentRequired('API-ключ не указан. Ключ не хранится в репозитории и не пишется в журнал.')
+    if model is not None and is_free_model(model):
+        # A zero-price model is guarded by the daily request counter, not by money.
+        if not (isinstance(budget, (int, float)) and math.isfinite(budget) and budget >= 0):
+            raise ConsentRequired('Некорректный лимит проекта.')
+        return
     if not (isinstance(budget, (int, float)) and math.isfinite(budget) and budget > 0):
         raise ConsentRequired('Нужен ненулевой лимит проекта: без него расходы неконтролируемы.')
 
@@ -303,7 +402,7 @@ class GeminiPlanner:
         self.last_quota = {}
 
     def propose(self, packet, frames=(), cancelled=None):
-        _require_consent(self.key, self.budget, self.authorized)
+        _require_consent(self.key, self.budget, self.authorized, self.model)
         text = json.dumps(packet, ensure_ascii=False)
         if len(text.encode('utf-8')) > MAX_PACKET_BYTES:
             raise ResponseInvalid('Слишком большой пакет анализа.')
@@ -409,7 +508,7 @@ class GroqPlanner:
         self.last_quota = {}
 
     def propose(self, packet, frames=(), cancelled=None):
-        _require_consent(self.key, self.budget, self.authorized)
+        _require_consent(self.key, self.budget, self.authorized, self.model)
         if frames:
             raise ResponseInvalid('Groq-модель не принимает изображения: кадры будут проигнорированы. '
                                   'Для визуального отбора нужен Gemini.')
