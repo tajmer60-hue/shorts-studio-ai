@@ -100,7 +100,14 @@ def evaluate(name, planner, packet, frames, words, cache=None):
         meta = plan.get('meta') or {}
         row['provider'] = meta.get('provider', getattr(planner, 'PROVIDER', '?'))
     ledger = getattr(planner, 'ledger', None)
-    rows = ledger.rows() if ledger is not None else []
+    if ledger is None:
+        rows = []
+    elif hasattr(ledger, 'rows'):
+        rows = ledger.rows()
+    elif isinstance(ledger, list):
+        rows = ledger
+    else:
+        rows = []
     row['reserved_usd'] = round(sum(float(r.get('reserved_usd') or 0) for r in rows), 6)
     row['reported_usd'] = round(sum(float(r.get('reported_usd') or 0) for r in rows if r.get('reported_usd')), 6)
     if cache is not None:

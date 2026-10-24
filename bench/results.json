@@ -1,0 +1,60 @@
+[
+  {
+    "model": "nvidia/nemotron-3.5-super-vl:free",
+    "ok": true,
+    "error": null,
+    "seconds": 19.53,
+    "candidates": 3,
+    "segments": 3,
+    "word_cuts": 0,
+    "overlaps": 0,
+    "out_of_window": 0,
+    "coverage": 0.4333,
+    "median_clip_seconds": 45.0,
+    "clips_in_target_range": 3,
+    "within_window": true,
+    "parts_in_source_order": true,
+    "median_rationale_chars": 169,
+    "unique_titles": 3,
+    "provider": "openrouter",
+    "reserved_usd": 0.0,
+    "reported_usd": 0,
+    "beats_found": 3,
+    "beats_total": 3,
+    "filler_seconds": 0.0,
+    "selected_seconds": 130.0,
+    "filler_ratio": 0.0
+  },
+  {
+    "model": "nvidia/nemotron-3-nano-omni-30b-a3b-reasoning:free",
+    "ok": false,
+    "error": "ValueError: OpenRouter: HTTP 404. Проверьте ключ, баланс и доступность модели; повтора нет.",
+    "seconds": 0.09,
+    "reserved_usd": 0.0,
+    "reported_usd": 0
+  },
+  {
+    "model": "google/gemma-4-31b-it:free",
+    "ok": false,
+    "error": "QuotaExhausted: OpenRouter вернул 429: исчерпан лимит запросов. Прогресс сохранён, повтора нет.",
+    "seconds": 0.37,
+    "reserved_usd": 0.0,
+    "reported_usd": 0
+  },
+  {
+    "model": "thinkingmachines/inkling:free",
+    "ok": false,
+    "error": "ValueError: OpenRouter: HTTP 403. Проверьте ключ, баланс и доступность модели; повтора нет.",
+    "seconds": 0.09,
+    "reserved_usd": 0.0,
+    "reported_usd": 0
+  },
+  {
+    "model": "nvidia/nemotron-3.5-content-safety:free",
+    "ok": false,
+    "error": "ValueError: OpenRouter: HTTP 404. Проверьте ключ, баланс и доступность модели; повтора нет.",
+    "seconds": 0.08,
+    "reserved_usd": 0.0,
+    "reported_usd": 0
+  }
+]
