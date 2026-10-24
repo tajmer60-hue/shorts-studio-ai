@@ -66,12 +66,25 @@ class AutoStudio(QMainWindow):
         drow.addWidget(QLabel('Темп:'));self.aggr=QComboBox()
         self.aggr.addItem('мягко','soft');self.aggr.addItem('нормально','normal');self.aggr.addItem('быстро','fast')
         self.aggr.setCurrentIndex(1);drow.addWidget(self.aggr);mbox.addLayout(drow)
+        prow2=QHBoxLayout();prow2.addWidget(QLabel('Профиль канала:'))
+        self.profile=QComboBox()
+        from profiles import load_profiles
+        self.profile_data=load_profiles(self.root/'profiles')
+        for item in self.profile_data['profiles']:
+            self.profile.addItem(item['name'],item['id'])
+        self.profile.currentIndexChanged.connect(self.apply_profile);prow2.addWidget(self.profile,1)
+        prow2.addWidget(QLabel('Интенсивность:'));self.intensity=QComboBox()
+        for label,value in [('Cinematic','cinematic'),('Balanced','balanced'),('Aggressive','aggressive')]:
+            self.intensity.addItem(label,value)
+        self.intensity.setCurrentIndex(1);prow2.addWidget(self.intensity)
+        mbox.addLayout(prow2)
         rrow=QHBoxLayout();self.reference=QLineEdit();self.reference.setPlaceholderText('Референс своего стиля (необязательно): короткий ролик')
         rrow.addWidget(self.reference,1);pick=QPushButton('Выбрать референс');pick.clicked.connect(self.pick_reference);rrow.addWidget(pick)
         mbox.addLayout(rrow)
         self.mode_note=QLabel('');self.mode_note.setWordWrap(True);mbox.addWidget(self.mode_note)
         self.mode.currentIndexChanged.connect(self.mode_changed);layout.addWidget(mode_box)
         self.mode_changed(0)
+        self.apply_profile(0)
         reframe_box=QGroupBox('Smart Reframe — вертикальный кадр следует за сюжетом');rbox=QVBoxLayout(reframe_box)
         self.reframe=QCheckBox('Вести кадр за субъектом вместо мёртвого центра');self.reframe.setChecked(True)
         rbox.addWidget(self.reframe)
@@ -125,6 +138,17 @@ class AutoStudio(QMainWindow):
         if path:
             self.folder.setText(path);self.settings.write_text(json.dumps(dict(folder=path),ensure_ascii=False),encoding='utf-8')
 
+    def apply_profile(self,_index):
+        from profiles import get_profile,profile_to_settings
+        try:settings=profile_to_settings(get_profile(self.root/'profiles',self.profile.currentData()))
+        except ValueError as error:
+            self.status.setText(str(error));return
+        self.mode.setCurrentIndex(0 if settings['mode']=='serial' else 1)
+        self.dur_min.setValue(settings['duration_min']);self.dur_max.setValue(settings['duration_max'])
+        self.aggr.setCurrentIndex({'soft':0,'normal':1,'fast':2}[settings['aggressiveness']])
+        self.intensity.setCurrentIndex({'cinematic':0,'balanced':1,'aggressive':2}[settings['intensity']])
+        self.profile_settings=settings
+
     def pick_reference(self):
         path,_=QFileDialog.getOpenFileName(self,'Референс монтажа','','Видео (*.mp4 *.mkv *.mov *.webm)')
         if path:self.reference.setText(path)
@@ -175,6 +199,8 @@ class AutoStudio(QMainWindow):
         settings=dict(provider=provider,budget=budget,training_allowed=self.training.isChecked(),
                     reframe=self.reframe.isChecked(),mode=self.mode.currentData(),
                     reference=self.reference.text().strip(),
+                    profile=self.profile.currentData(),intensity=self.intensity.currentData(),
+                    music_moods=getattr(self,'profile_settings',{}).get('music_moods',[]),
                     duration_min=self.dur_min.value(),duration_max=self.dur_max.value(),
                     aggressiveness=self.aggr.currentData(),**keys)
         self.active_source=source

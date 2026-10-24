@@ -1,0 +1,74 @@
+{
+  "schema": 1,
+  "profiles": [
+    {
+      "id": "serial-story",
+      "name": "Serial Story",
+      "mode": "serial",
+      "duration_min": 45.0,
+      "duration_max": 90.0,
+      "intensity": "balanced",
+      "aggressiveness": "normal",
+      "music_moods": [
+        "dark_ambient",
+        "emotional",
+        "none"
+      ],
+      "music_level_db": -18.0,
+      "sfx_intensity": "cinematic",
+      "subtitle_style": "bold_bottom",
+      "subtitle_position": "bottom_safe",
+      "censor": "mute_approved",
+      "export": "shorts_1080",
+      "hook_min_score": 25,
+      "title_template": "{series} • Часть {part}: {title}",
+      "description_template": "Продолжение в следующей части. Смонтировано из серии локально."
+    },
+    {
+      "id": "phonk-viral",
+      "name": "Phonk Viral Edit",
+      "mode": "viral",
+      "duration_min": 20.0,
+      "duration_max": 45.0,
+      "intensity": "aggressive",
+      "aggressiveness": "fast",
+      "music_moods": [
+        "aggressive_phonk",
+        "dark_phonk",
+        "electronic_synthwave"
+      ],
+      "music_level_db": -12.0,
+      "sfx_intensity": "aggressive",
+      "subtitle_style": "karaoke_center",
+      "subtitle_position": "center_safe",
+      "censor": "mute_approved",
+      "export": "shorts_1080",
+      "hook_min_score": 40,
+      "title_template": "{title} #shorts",
+      "description_template": "Динамичный эдит. Музыка добавлена только из лицензированной библиотеки."
+    },
+    {
+      "id": "cinematic-drama",
+      "name": "Cinematic Drama",
+      "mode": "viral",
+      "duration_min": 30.0,
+      "duration_max": 75.0,
+      "intensity": "cinematic",
+      "aggressiveness": "soft",
+      "music_moods": [
+        "emotional",
+        "cinematic_epic",
+        "dark_ambient"
+      ],
+      "music_level_db": -16.0,
+      "sfx_intensity": "cinematic",
+      "subtitle_style": "minimal_top",
+      "subtitle_position": "bottom_safe",
+      "censor": "mute_approved",
+      "export": "shorts_1080",
+      "hook_min_score": 30,
+      "title_template": "{title}",
+      "description_template": "Эмоциональная сцена без спойлеров к продолжению."
+    }
+  ]
+}

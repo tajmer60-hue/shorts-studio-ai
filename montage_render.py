@@ -74,7 +74,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     return header+'\n'.join(lines)+'\n'
 
 
-def render_montage(source,candidate,transcript,folder,cancelled,progress=lambda x:None,censor_ops=None,reframe=None):
+def render_montage(source,candidate,transcript,folder,cancelled,progress=lambda x:None,censor_ops=None,reframe=None,music=None,music_intensity='balanced'):
     if cancelled.is_set():raise ValueError('Отменено.')
     source=Path(source).resolve();folder=Path(folder).resolve();folder.mkdir(parents=True,exist_ok=True)
     identity=source_key(source);total=probe(source)
@@ -93,7 +93,8 @@ def render_montage(source,candidate,transcript,folder,cancelled,progress=lambda 
         raise ValueError('Цензура не согласована с монтажом: '+details)
     mute=volume_filter(censored['ops'])
     key=hashlib.sha256(json.dumps([identity,plan,candidate['title'],cues,censored['ops'],
-        bool(reframe),reframe['segments'] if reframe else None,'montage-v3'],ensure_ascii=False).encode()).hexdigest()
+        bool(reframe),reframe['segments'] if reframe else None,
+        music['file'] if music else None,music_intensity,'montage-v4'],ensure_ascii=False).encode()).hexdigest()
     work=folder/key;work.mkdir(exist_ok=True);target=work/'preview.mp4'
     marker=work/'complete.json'
     if marker.exists() and target.exists():
@@ -132,10 +133,27 @@ def render_montage(source,candidate,transcript,folder,cancelled,progress=lambda 
     # Generated cache path only, never interpolate AI/user text into a filter expression.
     escaped=str(subtitles).replace('\\','/').replace(':','\\:').replace("'","'\\''")
     temp=work/(uuid.uuid4().hex+'.partial.mp4')
-    final=[executable('ffmpeg'),'-v','error','-nostdin','-n','-f','concat','-safe','1','-i',str(listing),
-        '-vf',"ass='"+escaped+"'",'-c:v','libx264','-preset','fast','-crf','20','-c:a','aac','-b:a','192k']
-    # Only approved intervals are silenced; the rest of the dialogue is untouched.
-    if mute:final+=['-af',mute]
+    from music import license_ok
+    from beat_sync import music_chain
+    use_music=music is not None and license_ok(music)
+    final=[executable('ffmpeg'),'-v','error','-nostdin','-n','-f','concat','-safe','1','-i',str(listing)]
+    if use_music:
+        # Dialogue stays master: profanity muting applies to the dialogue branch
+        # BEFORE mixing, music is ducked under every spoken interval, and the mix
+        # is limited so it cannot clip. Uncleared tracks never reach this point.
+        dialogue_branch = ('[0:a]' + mute + '[d]') if mute else '[0:a]anull[d]'
+        final += ['-i', str(music['file']), '-filter_complex',
+                  "[0:v]ass='" + escaped + "'[v];[1:a]" +
+                  music_chain(plan['duration'], cues, music_intensity) +
+                  "[m];" + dialogue_branch + ";[d][m]amix=inputs=2:duration=first:"
+                  "dropout_transition=0:normalize=0[mix];[mix]alimiter=limit=0.89[a]"]
+        final += ['-map', '[v]', '-map', '[a]', '-c:v', 'libx264', '-preset', 'fast',
+                  '-crf', '20', '-c:a', 'aac', '-b:a', '192k']
+    else:
+        final+=['-vf',"ass='"+escaped+"'",'-c:v','libx264','-preset','fast','-crf','20','-c:a','aac','-b:a','192k']
+        # Only approved intervals are silenced; the rest of the dialogue is untouched.
+        if mute:final+=['-af',mute]
+        final+=['-map','0:v:0','-map','0:a:0']
     final+=['-movflags','+faststart',str(temp)]
     run_media(final,cancelled,work)
     if abs(probe(temp)-plan['duration'])>.3:raise ValueError('Длительность монтажа не совпала с планом.')

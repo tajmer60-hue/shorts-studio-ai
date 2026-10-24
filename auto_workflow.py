@@ -18,6 +18,8 @@ from censor import dictionary,profanity_hits,audio_ops
 from modes import MODE_PROMPTS,plan_for_mode
 from intros import detect_exclusions,AUTO_SKIP,apply_exclusions
 from style_profile import profile_from_reference,rank_with_style,style_targets
+import music as music_lib
+import hooks as hook_mod
 from reframe import plan_reframe,SaliencyBoxSource,ProviderBoxSource
 from providers import (GeminiPlanner,GroqPlanner,FallbackChain,Ledger,ConsentRequired,FreeQuota,
                        FREE_VISION_MODEL,UNKNOWN_TARIFF_RESERVE)
@@ -239,14 +241,36 @@ def _finish_and_render(source,transcript,manifest,project,result,ops,reframe,
         aligned=aligned_segments(c,transcript['words'],manifest['duration'])
         c['source_segments']=[{'in':s['source_in'],'out':s['source_out']} for s in aligned['segments']]
     result=unique_chronological(result);atomic_json(project/'selected.json',result)
+    catalog=music_lib.load_catalog(root/'music')
+    moods=list(settings.get('music_moods') or [])
+    intensity=settings.get('intensity','balanced')
+    track=None
+    for mood in moods:
+        found=music_lib.match_tracks(catalog,mood,limit=1)
+        if found:track,mood_used=found[0],mood;break
+    else:mood_used=moods[0] if moods else 'none'
+    if moods and track is None:
+        status('Лицензированной музыки под выбранные настроения нет: ролик останется '
+               'с оригинальной дорожкой. Стилевые ориентиры: '
+               +'; '.join(t['title'] for t in music_lib.style_hints(catalog,moods[0])[:3]))
     for i,candidate in enumerate(result['candidates']):
         if cancelled.is_set():raise ValueError('Отменено.')
         status(f'Монтирую {i+1} из {len(result["candidates"])}: {candidate["title"]}')
-        video=render_montage(source,candidate,transcript,project/'renders',cancelled,censor_ops=ops,reframe=reframe)
+        hook=hook_mod.select_hook(candidate,transcript)
+        dialogue=[c for c in transcript.get('cues',[])
+                  if c['end']>candidate['source_segments'][0]['in']
+                  and c['start']<candidate['source_segments'][-1]['out']]
+        sfx=hook_mod.sfx_plan(hook,mood_used,intensity,dialogue,
+                              sum(s['out']-s['in'] for s in candidate['source_segments']))
+        video=render_montage(source,candidate,transcript,project/'renders',cancelled,censor_ops=ops,reframe=reframe,music=track,music_intensity=intensity)
         # Report what was actually applied, read back from the rendered artifact.
         try:censor=json.loads((video.parent/'montage.json').read_text(encoding='utf-8')).get('censor',{})
         except (OSError,ValueError,KeyError):censor={}
-        on_clip(dict(candidate=candidate,path=str(video),part=i+1,censor=censor))
+        atomic_json(video.parent/(video.stem+'.hook.json'),dict(hook=hook,sfx=sfx,
+            mood=mood_used,music=track['title'] if track else None,
+            music_licensed=bool(track and music_lib.license_ok(track))))
+        on_clip(dict(candidate=candidate,path=str(video),part=i+1,censor=censor,
+                     hook=hook,sfx=sfx,music=track['title'] if track else None))
     return dict(clips=len(result['candidates']),result=result)
 
 
