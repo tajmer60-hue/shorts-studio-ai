@@ -17,7 +17,10 @@ import subprocess
 import uuid
 import wave
 
-import numpy as np
+try:  # The Lite portable bundle ships without numpy; analysis then explains itself.
+    import numpy as np
+except ImportError:      # pragma: no cover - exercised only in the Lite bundle
+    np = None
 
 from render import executable
 from runtime_support import source_key
@@ -38,8 +41,16 @@ INTENSITY = {
 }
 
 
+def _require_numpy():
+    if np is None:
+        raise ValueError('Анализ ритма требует numpy: установите requirements-ai.txt '
+                         'или запустите проектное окружение, а не Lite-сборку.')
+    return np
+
+
 def read_mono(path, max_seconds=None):
     """Decode to mono float32 without loading more than needed."""
+    np = _require_numpy()
     wav = Path(str(path) + '.beat.wav')
     args = [executable('ffmpeg'), '-v', 'error', '-nostdin', '-y', '-i', str(path),
             '-vn', '-ac', '1', '-ar', str(SR), '-c:a', 'pcm_s16le']
@@ -58,6 +69,7 @@ def read_mono(path, max_seconds=None):
 
 def onset_envelope(samples):
     """Spectral flux: half-wave rectified magnitude difference across frames."""
+    np = _require_numpy()
     if samples.size < N_FFT:
         return np.zeros(1, dtype=np.float32)
     window = np.hanning(N_FFT).astype(np.float32)
@@ -108,6 +120,7 @@ def estimate_tempo(env, bpm_min=60.0, bpm_max=200.0):
 
 def beat_grid(env, bpm):
     """Beat times in seconds: the phase of the tempo grid with most onset energy."""
+    np = _require_numpy()
     if not bpm:
         return []
     fps = SR / HOP
@@ -127,6 +140,7 @@ def beat_grid(env, bpm):
 
 def intensity_envelope(samples, frame_seconds=0.25):
     """RMS energy per frame: the material for drop detection and ducking checks."""
+    np = _require_numpy()
     size = max(1, int(SR * frame_seconds))
     count = samples.size // size
     if count == 0:

@@ -10,7 +10,7 @@ from PySide6.QtCore import QTimer,QUrl,Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,
     QLineEdit,QFileDialog,QListWidget,QListWidgetItem,QMessageBox,QCheckBox,QComboBox,QDoubleSpinBox,
-    QGroupBox,QProgressBar,QSlider,QStackedWidget,QInputDialog)
+    QGroupBox,QProgressBar,QSlider,QStackedWidget,QInputDialog,QDialog)
 from PySide6.QtMultimedia import QMediaPlayer,QAudioOutput
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from auto_workflow import PROVIDERS,create_clips
@@ -110,6 +110,9 @@ class AutoStudio(QMainWindow):
         cbox.addWidget(self.profanity)
         self.apply_censor=QPushButton('Пересобрать ролики с выбранным глушением');self.apply_censor.setEnabled(False)
         self.apply_censor.clicked.connect(self.rebuild_with_censor);cbox.addWidget(self.apply_censor)
+        qrow=QHBoxLayout();self.qc_button=QPushButton('Открыть очередь QC (сомнения цензуры и монтажа)')
+        self.qc_button.clicked.connect(self.open_qc_queue);qrow.addWidget(self.qc_button)
+        self.qc_count=QLabel('');qrow.addWidget(self.qc_count);cbox.addLayout(qrow)
         layout.addWidget(censor_box)
         # Initialise from the combo's actual value, not from an assumed default.
         self.provider_changed(self.provider.currentText())
@@ -283,6 +286,43 @@ class AutoStudio(QMainWindow):
             self.profanity.addItem(item)
         self.apply_censor.setEnabled(True)
 
+    def open_qc_queue(self):
+        from qc_queue import pending,acknowledge,blockers
+        project=self.last_project if getattr(self,'last_project',None) else None
+        if not project:
+            QMessageBox.information(self,'QC','Сначала выполните обработку: очередь собирается из её результатов.')
+            return
+        items=pending(project)
+        dialog=QDialog(self);dialog.setWindowTitle('Очередь QC');dialog.resize(760,420)
+        layout=QVBoxLayout(dialog)
+        listing=QListWidget()
+        for item in items:
+            mark='БЛОКИРУЕТ' if item['severity']=='block' else 'проверить'
+            listing.addItem(f"[{mark}] {item['kind']} · {item['clip']} · {item['timecode']} — {item['text']}")
+        layout.addWidget(listing)
+        layout.addWidget(QLabel('Отметка не меняет видео: она фиксирует, что вы посмотрели момент. '
+                                'Блокирующие пункты нужно решить до публикации.'))
+        row=QHBoxLayout()
+        ack=QPushButton('Отметить выбранные просмотренными')
+        def do_ack():
+            for index in range(listing.count()):
+                if listing.isItemSelected(listing.item(index)) and index<len(items):
+                    acknowledge(project,items[index]['id'])
+            self.refresh_qc_count();dialog.accept()
+        ack.clicked.connect(do_ack);row.addWidget(ack)
+        close=QPushButton('Закрыть');close.clicked.connect(dialog.reject);row.addWidget(close)
+        layout.addLayout(row)
+        dialog.exec()
+        self.refresh_qc_count()
+
+    def refresh_qc_count(self):
+        from qc_queue import pending,blockers
+        project=getattr(self,'last_project',None)
+        if not project:
+            self.qc_count.setText('');return
+        items=pending(project)
+        self.qc_count.setText(f'Сомнений: {len(items)}, из них блокирующих: {len(blockers(project))}')
+
     def rebuild_with_censor(self):
         from censor import audio_ops
         chosen=[]
@@ -317,7 +357,9 @@ class AutoStudio(QMainWindow):
                 self.progress.setValue(100 if kind=='done' else 0)
                 if kind=='error':self.status.setText(value)
                 elif value['cloud']:self.status.setText(f"Готово роликов: {value['clips']}. Просмотрите монтаж и сохраните понравившиеся.")
-                if isinstance(value,dict) and value.get('project'):self.load_censor_review(value['project'])
+                if isinstance(value,dict) and value.get('project'):
+                    self.last_project=Path(value['project']);self.load_censor_review(value['project'])
+                    self.refresh_qc_count()
                 else:self.status.setText('Подготовлено: диалоги и кадры всей серии сохранены локально. AI-отбор не запускался: платные запросы выключены.')
 
     def select(self,index):

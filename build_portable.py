@@ -86,6 +86,11 @@ def build(target):
         add(root / name, name)
     for name in ('auto_ui.py', 'auto_workflow.py', 'cloud_planner.py', 'montage_render.py'):
         add(root / name, name)
+    for name in ('providers.py', 'censor.py', 'modes.py', 'reframe.py', 'intros.py',
+                 'style_profile.py', 'music.py', 'beat_sync.py', 'hooks.py', 'profiles.py',
+                 'qc.py', 'qc_queue.py', 'AI_PROVIDERS.md', 'MUSIC.md', 'API_ACCEPTANCE.md',
+                 'AGENTS.md', 'PROGRESS.md'):
+        add(root / name, name)
     for source in qt.glob('*.txt'):
         add(source, 'licenses/PySide6/' + source.name)
     for distribution in packages.glob('*.dist-info'):
