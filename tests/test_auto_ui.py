@@ -189,6 +189,50 @@ class AutoUiTests(unittest.TestCase):
         self.assertNotIn('secret', self.window.status.text())
 
 
+    def test_mode_selector_defaults_to_serial_and_reaches_settings(self):
+        self.assertEqual(self.window.mode.currentData(), 'serial')
+        self.assertIn('Хронология сохраняется', self.window.mode_note.text())
+        self.window.mode.setCurrentIndex(1)
+        self.assertEqual(self.window.mode.currentData(), 'viral')
+        self.assertIn('Независимые', self.window.mode_note.text())
+
+    def test_inverted_duration_range_is_refused(self):
+        video = self.root / 'source.mp4'
+        video.write_bytes(b'not really a video')
+        self.window.source.setText(str(video))
+        self.window.allowed.setChecked(True)
+        self.window.provider.setCurrentText('gemini')
+        self.window.keys['gemini_key'].setText('secret')
+        self.window.budget.setValue(1.0)
+        self.window.dur_min.setValue(90)
+        self.window.dur_max.setValue(45)
+        with patch('auto_ui.threading.Thread') as thread:
+            self.window.begin()
+            thread.assert_not_called()
+        self.assertIn('граница длительности', self.window.status.text())
+
+    def test_mode_and_pacing_reach_the_worker_settings(self):
+        video = self.root / 'source.mp4'
+        video.write_bytes(b'not really a video')
+        self.window.source.setText(str(video))
+        self.window.mode.setCurrentIndex(1)
+        self.window.aggr.setCurrentIndex(2)
+        self.window.dur_min.setValue(30)
+        self.window.dur_max.setValue(60)
+        captured = {}
+        with patch('auto_ui.threading.Thread') as thread:
+            thread.side_effect = lambda target, daemon: captured.update(target=target) or FakeThread()
+            self.window.begin()
+        with patch('auto_ui.create_clips') as create:
+            create.return_value = dict(prepared=True, cloud=False, project='')
+            captured['target']()
+            settings = create.call_args.kwargs['settings']
+        self.assertEqual(settings['mode'], 'viral')
+        self.assertEqual(settings['aggressiveness'], 'fast')
+        self.assertEqual((settings['duration_min'], settings['duration_max']), (30.0, 60.0))
+        self.assertTrue(settings['reframe'])
+
+
 class FakeThread:
     def start(self):
         pass

@@ -15,6 +15,7 @@ from render import executable
 from montage_render import run_media,render_montage,aligned_segments
 from cloud_planner import OpenRouterPlanner,unique_chronological,REQUEST_RESERVE
 from censor import dictionary,profanity_hits,audio_ops
+from modes import MODE_PROMPTS,plan_for_mode
 from reframe import plan_reframe,SaliencyBoxSource,ProviderBoxSource
 from providers import (GeminiPlanner,GroqPlanner,FallbackChain,Ledger,ConsentRequired,FreeQuota,
                        FREE_VISION_MODEL,UNKNOWN_TARIFF_RESERVE)
@@ -161,21 +162,74 @@ def build_reframe(source,manifest,project,planner,settings,cancelled,status):
     return plan
 
 
+def _apply_pause_cuts(candidate,cuts):
+    """Turn approved word-safe pause cuts into real segment splits.
+
+    A cut that only partially overlaps a segment is dropped here rather than
+    half-applied: half-removed pauses are the defect the spec forbids.
+    """
+    if not cuts:return candidate['source_segments']
+    segments=[]
+    for seg in candidate['source_segments']:
+        a,b=seg['in'],seg['out']
+        inside=[c for c in cuts if c['start']>=a and c['end']<=b]
+        if not inside:
+            segments.append(dict(**{'in':a,'out':b}));continue
+        from edit_plan import build_plan
+        plan=build_plan('source',a,b,inside)
+        segments.extend(dict(**{'in':x['source_in'],'out':x['source_out']}) for x in plan['segments'])
+    return segments
+
+
+def _finish_and_render(source,transcript,manifest,project,result,ops,reframe,
+                       cancelled,status,on_clip):
+    for c in result['candidates']:
+        c['source_segments']=_apply_pause_cuts(c,c.get('pause_cuts',[]))
+        aligned=aligned_segments(c,transcript['words'],manifest['duration'])
+        c['source_segments']=[{'in':s['source_in'],'out':s['source_out']} for s in aligned['segments']]
+    result=unique_chronological(result);atomic_json(project/'selected.json',result)
+    for i,candidate in enumerate(result['candidates']):
+        if cancelled.is_set():raise ValueError('Отменено.')
+        status(f'Монтирую {i+1} из {len(result["candidates"])}: {candidate["title"]}')
+        video=render_montage(source,candidate,transcript,project/'renders',cancelled,censor_ops=ops,reframe=reframe)
+        # Report what was actually applied, read back from the rendered artifact.
+        try:censor=json.loads((video.parent/'montage.json').read_text(encoding='utf-8')).get('censor',{})
+        except (OSError,ValueError,KeyError):censor={}
+        on_clip(dict(candidate=candidate,path=str(video),part=i+1,censor=censor))
+    return dict(clips=len(result['candidates']),result=result)
+
+
 def create_clips(source,root,key,budget,authorized,cancelled,status,on_clip,
                  settings=None,censor_ops=None,lexicon_path=None):
     settings=dict(settings or {})
+    mode=settings.get('mode','serial')
+    if mode not in MODE_PROMPTS:raise ValueError('Неизвестный режим монтажа: '+str(mode))
+    duration_range=(float(settings.get('duration_min',45.0)),float(settings.get('duration_max',90.0)))
+    aggressiveness=settings.get('aggressiveness','normal')
+    top_k=settings.get('top_k')
     project,transcript,manifest=prepare_episode(source,root,cancelled,status)
     review=review_profanity(transcript,lexicon_path)
     atomic_json(project/'censor_review.json',review)
     if review['hits']:
         status(f"Найдено спорных слов: {len(review['hits'])}. Список сохранён в censor_review.json; "
                f"без вашего одобрения ничего не глушится.")
-    if not authorized:return dict(prepared=True,cloud=False,project=str(project),
-                                  profanity=len(review['hits']))
-    planner=None
-    if authorized:
-        planner=(build_planner(settings,project/'cloud',authorized,budget) if settings
-                 else OpenRouterPlanner(key,project/'cloud',budget,authorized))
+    ops=list(censor_ops or [])
+    if not authorized:
+        # Fully offline automatic montage: local editorial algorithms, no network,
+        # no money. Honest label: heuristics over the transcript, not an AI verdict.
+        status(f'Собираю ролики локальным алгоритмом режима «{mode}» без нейросети…')
+        raw=plan_for_mode(mode,transcript,(),duration_range,aggressiveness,top_k=top_k)
+        if raw.get('reason'):status(raw['reason'])
+        from ai_contract import validate_ai_plan
+        result=validate_ai_plan(raw,manifest['duration'])
+        reframe=build_reframe(source,manifest,project,None,settings,cancelled,status)
+        done=_finish_and_render(source,transcript,manifest,project,result,ops,reframe,
+                                cancelled,status,on_clip)
+        return dict(prepared=True,cloud=False,local_montage=True,mode=mode,
+                    clips=done['clips'],project=str(project),profanity=len(review['hits']),
+                    muted=len(ops),reason=raw.get('reason'),limitations=raw.get('limitations'))
+    planner=(build_planner(settings,project/'cloud',authorized,budget) if settings
+             else OpenRouterPlanner(key,project/'cloud',budget,authorized))
     # Fail a fresh project before spending on only part of an episode. This runs
     # BEFORE any provider-backed reframe so a quota check always precedes spend.
     reserve=float(getattr(planner,'reserve_estimate',lambda:REQUEST_RESERVE)())
@@ -193,10 +247,11 @@ def create_clips(source,root,key,budget,authorized,cancelled,status,on_clip,
                          f'({len(manifest["packets"])+1} запросов по ${reserve:.4f}). '
                          f'Это верхний резерв, а не прогноз цены. Запросы не отправлены.')
     reframe=build_reframe(source,manifest,project,planner,settings,cancelled,status)
+    prompt=MODE_PROMPTS[mode]
     candidates=[]
     for i,item in enumerate(manifest['packets']):
-        status(f'AI отбирает события: часть {i+1} из {len(manifest["packets"])}')
-        result=planner.propose(item['packet'],item['frames'],cancelled)
+        status(f'AI отбирает события в режиме «{mode}»: часть {i+1} из {len(manifest["packets"])}')
+        result=planner.propose(item['packet'],item['frames'],cancelled,task_prompt=prompt)
         # Window calls cannot invent footage from unobserved parts of the episode.
         for clip in result['candidates']:
             if any(s['in']<item['packet']['source_in'] or s['out']>item['packet']['source_out'] for s in clip['source_segments']):
@@ -205,27 +260,15 @@ def create_clips(source,root,key,budget,authorized,cancelled,status,on_clip,
     if cancelled.is_set():raise ValueError('Отменено.')
     if candidates:
         status('AI проверяет общий сюжет и отбирает ролики без повторов…')
-        global_packet=dict(duration=manifest['duration'],task='Final editorial selection. Select the best proposals, combine only provided segments if necessary. Remove repeated events; chronological order. Do not invent source intervals.',proposals=candidates)
-        result=planner.propose(global_packet,(),cancelled)
+        global_packet=dict(duration=manifest['duration'],mode=mode,task='Final editorial selection. Select the best proposals, combine only provided segments if necessary. Remove repeated events; chronological order. Do not invent source intervals.',proposals=candidates)
+        result=planner.propose(global_packet,(),cancelled,task_prompt=prompt)
         allowed=[s for c in candidates for s in c['source_segments']]
         for clip in result['candidates']:
             for s in clip['source_segments']:
                 if not any(a['in']<=s['in']<s['out']<=a['out'] for a in allowed):
                     raise ValueError('Итоговый AI-план использует неподтверждённый материал.')
     else:result=dict(schema=1,candidates=[])
-    # Align first, then deduplicate, so expanded speech boundaries cannot repeat footage.
-    for c in result['candidates']:
-        aligned=aligned_segments(c,transcript['words'],manifest['duration'])
-        c['source_segments']=[{'in':s['source_in'],'out':s['source_out']} for s in aligned['segments']]
-    result=unique_chronological(result);atomic_json(project/'selected.json',result)
-    ops=list(censor_ops or [])
-    for i,candidate in enumerate(result['candidates']):
-        if cancelled.is_set():raise ValueError('Отменено.')
-        status(f'Монтирую {i+1} из {len(result["candidates"])}: {candidate["title"]}')
-        video=render_montage(source,candidate,transcript,project/'renders',cancelled,censor_ops=ops,reframe=reframe)
-        # Report what was actually applied, read back from the rendered artifact.
-        try:censor=json.loads((video.parent/'montage.json').read_text(encoding='utf-8')).get('censor',{})
-        except (OSError,ValueError,KeyError):censor={}
-        on_clip(dict(candidate=candidate,path=str(video),part=i+1,censor=censor))
-    return dict(prepared=True,cloud=True,clips=len(result['candidates']),project=str(project),
+    done=_finish_and_render(source,transcript,manifest,project,result,ops,reframe,
+                            cancelled,status,on_clip)
+    return dict(prepared=True,cloud=True,mode=mode,clips=done['clips'],project=str(project),
                 profanity=len(review['hits']),muted=len(ops))

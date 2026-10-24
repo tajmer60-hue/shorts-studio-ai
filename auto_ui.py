@@ -55,6 +55,20 @@ class AutoStudio(QMainWindow):
         self.quota_label.setWordWrap(True);opts.addWidget(self.quota_label)
         row=QHBoxLayout();row.addWidget(QLabel('Лимит проекта, USD:'));self.budget=QDoubleSpinBox();self.budget.setRange(0,20);self.budget.setValue(0);self.budget.setSingleStep(.5);row.addWidget(self.budget);opts.addLayout(row)
         opts.addWidget(QLabel('Пока разрешение выключено: только локальная подготовка. API не вызывается.'));layout.addWidget(settings)
+        mode_box=QGroupBox('Режим AI-монтажа');mbox=QVBoxLayout(mode_box)
+        mrow=QHBoxLayout();mrow.addWidget(QLabel('Режим:'))
+        self.mode=QComboBox();self.mode.addItem('Serial Cutter — связные Part 1..N','serial')
+        self.mode.addItem('Viral Moments — самостоятельные пики','viral')
+        mrow.addWidget(self.mode,1);mbox.addLayout(mrow)
+        drow=QHBoxLayout();drow.addWidget(QLabel('Длительность ролика, с:'))
+        self.dur_min=QDoubleSpinBox();self.dur_min.setRange(10,180);self.dur_min.setValue(45);drow.addWidget(self.dur_min)
+        drow.addWidget(QLabel('—'));self.dur_max=QDoubleSpinBox();self.dur_max.setRange(10,180);self.dur_max.setValue(90);drow.addWidget(self.dur_max)
+        drow.addWidget(QLabel('Темп:'));self.aggr=QComboBox()
+        self.aggr.addItem('мягко','soft');self.aggr.addItem('нормально','normal');self.aggr.addItem('быстро','fast')
+        self.aggr.setCurrentIndex(1);drow.addWidget(self.aggr);mbox.addLayout(drow)
+        self.mode_note=QLabel('');self.mode_note.setWordWrap(True);mbox.addWidget(self.mode_note)
+        self.mode.currentIndexChanged.connect(self.mode_changed);layout.addWidget(mode_box)
+        self.mode_changed(0)
         reframe_box=QGroupBox('Smart Reframe — вертикальный кадр следует за сюжетом');rbox=QVBoxLayout(reframe_box)
         self.reframe=QCheckBox('Вести кадр за субъектом вместо мёртвого центра');self.reframe.setChecked(True)
         rbox.addWidget(self.reframe)
@@ -108,6 +122,15 @@ class AutoStudio(QMainWindow):
         if path:
             self.folder.setText(path);self.settings.write_text(json.dumps(dict(folder=path),ensure_ascii=False),encoding='utf-8')
 
+    def mode_changed(self,_index):
+        value=self.mode.currentData()
+        if value=='serial':
+            self.mode_note.setText('Хронология сохраняется: вопрос остаётся с ответом, угроза с развязкой. '
+                                   'Каждая часть по возможности заканчивается на напряжении.')
+        else:
+            self.mode_note.setText('Независимые самодостаточные моменты: конфликт, поворот, юмор, реакция. '
+                                   'Порядок частей не обязан быть хронологией исходника.')
+
     def provider_changed(self,value):
         wanted={'free':('openrouter_key',),'auto':tuple(self.keys),'gemini':('gemini_key',),
                 'groq':('groq_key',),'openrouter':('openrouter_key',)}.get(value,())
@@ -140,8 +163,12 @@ class AutoStudio(QMainWindow):
             # A zero-price model is limited by requests per day, not by money.
             if provider not in ('free',) and budget<=0:
                 self.status.setText('Нужен ненулевой лимит проекта: без него расходы неконтролируемы.');return
+        if self.dur_min.value()>self.dur_max.value():
+            self.status.setText('Нижняя граница длительности больше верхней.');return
         settings=dict(provider=provider,budget=budget,training_allowed=self.training.isChecked(),
-                    reframe=self.reframe.isChecked(),**keys)
+                    reframe=self.reframe.isChecked(),mode=self.mode.currentData(),
+                    duration_min=self.dur_min.value(),duration_max=self.dur_max.value(),
+                    aggressiveness=self.aggr.currentData(),**keys)
         self.active_source=source
         self.player.stop();self.player.setSource(QUrl());self.catalog.clear();self.clips=[];self.save.setEnabled(False)
         from speech import atomic_json

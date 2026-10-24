@@ -401,15 +401,16 @@ class GeminiPlanner:
         self.timeout = timeout
         self.last_quota = {}
 
-    def propose(self, packet, frames=(), cancelled=None):
+    def propose(self, packet, frames=(), cancelled=None, task_prompt=None):
         _require_consent(self.key, self.budget, self.authorized, self.model)
+        prompt = task_prompt or EDITOR_PROMPT
         text = json.dumps(packet, ensure_ascii=False)
         if len(text.encode('utf-8')) > MAX_PACKET_BYTES:
             raise ResponseInvalid('Слишком большой пакет анализа.')
         if len(frames) > MAX_FRAMES:
             raise ResponseInvalid(f'Больше {MAX_FRAMES} кадров в одном запросе не отправляется.')
         images, hashes = _frames_payload(frames)
-        cache_key = self.cache.key(self.PROVIDER, self.model, EDITOR_PROMPT, packet, hashes)
+        cache_key = self.cache.key(self.PROVIDER, self.model, prompt, packet, hashes)
         cached = self.cache.load(cache_key)
         if cached is not None:
             return validate_ai_plan(cached, packet['duration'])
@@ -420,7 +421,7 @@ class GeminiPlanner:
         parts = [{'text': text}]
         parts.extend({'inline_data': {'mime_type': 'image/jpeg',
                                       'data': base64.b64encode(raw).decode()}} for _stamp, raw in images)
-        payload = {'system_instruction': {'parts': [{'text': EDITOR_PROMPT}]},
+        payload = {'system_instruction': {'parts': [{'text': prompt}]},
                    'contents': [{'role': 'user', 'parts': parts}],
                    'generationConfig': {'responseMimeType': 'application/json',
                                         'temperature': 0.2, 'maxOutputTokens': 8192}}
@@ -507,15 +508,16 @@ class GroqPlanner:
         self.timeout = timeout
         self.last_quota = {}
 
-    def propose(self, packet, frames=(), cancelled=None):
+    def propose(self, packet, frames=(), cancelled=None, task_prompt=None):
         _require_consent(self.key, self.budget, self.authorized, self.model)
+        prompt = task_prompt or EDITOR_PROMPT
         if frames:
             raise ResponseInvalid('Groq-модель не принимает изображения: кадры будут проигнорированы. '
                                   'Для визуального отбора нужен Gemini.')
         text = json.dumps(packet, ensure_ascii=False)
         if len(text.encode('utf-8')) > MAX_PACKET_BYTES:
             raise ResponseInvalid('Слишком большой пакет анализа.')
-        cache_key = self.cache.key(self.PROVIDER, self.model, EDITOR_PROMPT, packet, [])
+        cache_key = self.cache.key(self.PROVIDER, self.model, prompt, packet, [])
         cached = self.cache.load(cache_key)
         if cached is not None:
             return validate_ai_plan(cached, packet['duration'])
@@ -525,7 +527,7 @@ class GroqPlanner:
         request_id = self.ledger.begin(self.PROVIDER, self.model, cache_key, amount)
         payload = {'model': self.model, 'temperature': 0.2, 'max_tokens': 8192,
                    'response_format': {'type': 'json_object'},
-                   'messages': [{'role': 'system', 'content': EDITOR_PROMPT},
+                   'messages': [{'role': 'system', 'content': prompt},
                                 {'role': 'user', 'content': text}]}
         try:
             settled = False
