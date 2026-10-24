@@ -55,6 +55,13 @@ class AutoStudio(QMainWindow):
         self.quota_label.setWordWrap(True);opts.addWidget(self.quota_label)
         row=QHBoxLayout();row.addWidget(QLabel('Лимит проекта, USD:'));self.budget=QDoubleSpinBox();self.budget.setRange(0,20);self.budget.setValue(0);self.budget.setSingleStep(.5);row.addWidget(self.budget);opts.addLayout(row)
         opts.addWidget(QLabel('Пока разрешение выключено: только локальная подготовка. API не вызывается.'));layout.addWidget(settings)
+        reframe_box=QGroupBox('Smart Reframe — вертикальный кадр следует за сюжетом');rbox=QVBoxLayout(reframe_box)
+        self.reframe=QCheckBox('Вести кадр за субъектом вместо мёртвого центра');self.reframe.setChecked(True)
+        rbox.addWidget(self.reframe)
+        rbox.addWidget(QLabel('Локально, без сети и без денег: оценка значимости кадра. Это НЕ детектор лиц, '
+                              'поэтому результат помечается как низкая уверенность и требует просмотра. '
+                              'Если субъект не помещается в честное вертикальное окно — размытый фон, не чёрные полосы.'))
+        layout.addWidget(reframe_box)
         censor_box=QGroupBox('Спорные слова — глушатся только после вашего выбора');cbox=QVBoxLayout(censor_box)
         self.profanity=QListWidget();self.profanity.setMaximumHeight(120)
         self.profanity.addItem('Список появится после локальной подготовки серии.')
@@ -133,7 +140,8 @@ class AutoStudio(QMainWindow):
             # A zero-price model is limited by requests per day, not by money.
             if provider not in ('free',) and budget<=0:
                 self.status.setText('Нужен ненулевой лимит проекта: без него расходы неконтролируемы.');return
-        settings=dict(provider=provider,budget=budget,training_allowed=self.training.isChecked(),**keys)
+        settings=dict(provider=provider,budget=budget,training_allowed=self.training.isChecked(),
+                    reframe=self.reframe.isChecked(),**keys)
         self.active_source=source
         self.player.stop();self.player.setSource(QUrl());self.catalog.clear();self.clips=[];self.save.setEnabled(False)
         from speech import atomic_json

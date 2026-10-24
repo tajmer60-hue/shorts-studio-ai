@@ -8,12 +8,14 @@ from pathlib import Path
 import hashlib
 import json
 import math
+import subprocess
 from speech import transcribe,atomic_json
 from runtime_support import source_key
 from render import executable
 from montage_render import run_media,render_montage,aligned_segments
 from cloud_planner import OpenRouterPlanner,unique_chronological,REQUEST_RESERVE
 from censor import dictionary,profanity_hits,audio_ops
+from reframe import plan_reframe,SaliencyBoxSource,ProviderBoxSource
 from providers import (GeminiPlanner,GroqPlanner,FallbackChain,Ledger,ConsentRequired,FreeQuota,
                        FREE_VISION_MODEL,UNKNOWN_TARIFF_RESERVE)
 
@@ -126,8 +128,42 @@ def review_profanity(transcript,lexicon_path=None):
                              'Без одобрения пользователя ничего не глушится.'])
 
 
+def probe_size(source):
+    data=json.loads(subprocess.check_output([executable('ffprobe'),'-v','error','-show_streams',
+        '-of','json',str(source)],text=True,timeout=30,
+        creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0)))
+    stream=next(s for s in data['streams'] if s['codec_type']=='video')
+    return int(stream['width']),int(stream['height'])
+
+
+def build_reframe(source,manifest,project,planner,settings,cancelled,status):
+    """Local by default: Smart Reframe must work with no network and no money.
+
+    The saliency source is an estimate, not a face detector, so the plan is
+    labelled low confidence and the rendered result still needs a look.
+    """
+    if settings.get('reframe',True) is False:return None
+    width,height=probe_size(source)
+    interval=max(0.5,float(settings.get('reframe_interval',1.0)))
+    count=int(manifest['duration']//interval)+1
+    stamps=[round(i*interval,3) for i in range(count)][:1200]
+    status(f'Строю сопровождение кадра: {len(stamps)} точек обзора…')
+    if settings.get('reframe_source')=='provider' and planner is not None             and getattr(planner,'VISION',False):
+        box_source=ProviderBoxSource(planner)
+    else:
+        box_source=SaliencyBoxSource()
+    samples=box_source.sample(source,stamps,width,height,cancelled)
+    plan=plan_reframe(width,height,samples,manifest['duration'])
+    plan['source']='provider' if isinstance(box_source,ProviderBoxSource) else 'local-saliency'
+    plan['confidence']='low' if plan['source']=='local-saliency' else 'model'
+    atomic_json(project/'reframe.json',plan)
+    status('Сопровождение кадра построено локально. Точки между обзорами интерполированы.')
+    return plan
+
+
 def create_clips(source,root,key,budget,authorized,cancelled,status,on_clip,
                  settings=None,censor_ops=None,lexicon_path=None):
+    settings=dict(settings or {})
     project,transcript,manifest=prepare_episode(source,root,cancelled,status)
     review=review_profanity(transcript,lexicon_path)
     atomic_json(project/'censor_review.json',review)
@@ -136,9 +172,12 @@ def create_clips(source,root,key,budget,authorized,cancelled,status,on_clip,
                f"без вашего одобрения ничего не глушится.")
     if not authorized:return dict(prepared=True,cloud=False,project=str(project),
                                   profanity=len(review['hits']))
-    planner=(build_planner(settings,project/'cloud',authorized,budget) if settings
-             else OpenRouterPlanner(key,project/'cloud',budget,authorized))
-    # Fail a fresh project before spending on only part of an episode.
+    planner=None
+    if authorized:
+        planner=(build_planner(settings,project/'cloud',authorized,budget) if settings
+                 else OpenRouterPlanner(key,project/'cloud',budget,authorized))
+    # Fail a fresh project before spending on only part of an episode. This runs
+    # BEFORE any provider-backed reframe so a quota check always precedes spend.
     reserve=float(getattr(planner,'reserve_estimate',lambda:REQUEST_RESERVE)())
     ledger=getattr(planner,'ledger',None)
     fresh=not ledger.rows() if ledger is not None else True
@@ -153,6 +192,7 @@ def create_clips(source,root,key,budget,authorized,cancelled,status,on_clip,
         raise ValueError(f'Для безопасного резерва всей серии нужен лимит ${required:.2f} '
                          f'({len(manifest["packets"])+1} запросов по ${reserve:.4f}). '
                          f'Это верхний резерв, а не прогноз цены. Запросы не отправлены.')
+    reframe=build_reframe(source,manifest,project,planner,settings,cancelled,status)
     candidates=[]
     for i,item in enumerate(manifest['packets']):
         status(f'AI отбирает события: часть {i+1} из {len(manifest["packets"])}')
@@ -182,7 +222,7 @@ def create_clips(source,root,key,budget,authorized,cancelled,status,on_clip,
     for i,candidate in enumerate(result['candidates']):
         if cancelled.is_set():raise ValueError('Отменено.')
         status(f'Монтирую {i+1} из {len(result["candidates"])}: {candidate["title"]}')
-        video=render_montage(source,candidate,transcript,project/'renders',cancelled,censor_ops=ops)
+        video=render_montage(source,candidate,transcript,project/'renders',cancelled,censor_ops=ops,reframe=reframe)
         # Report what was actually applied, read back from the rendered artifact.
         try:censor=json.loads((video.parent/'montage.json').read_text(encoding='utf-8')).get('censor',{})
         except (OSError,ValueError,KeyError):censor={}

@@ -10,6 +10,7 @@ from process_guard import ProcessGuard
 from speech import subtitle_cues,srt,atomic_json
 from edit_plan import remap_words
 from censor import remap_ops,volume_filter
+from reframe import reframe_filter
 
 
 def run_media(command,cancelled,folder):
@@ -73,7 +74,7 @@ Format: Layer, Start, End, Style, Name, MarginL, MarginR, MarginV, Effect, Text
     return header+'\n'.join(lines)+'\n'
 
 
-def render_montage(source,candidate,transcript,folder,cancelled,progress=lambda x:None,censor_ops=None):
+def render_montage(source,candidate,transcript,folder,cancelled,progress=lambda x:None,censor_ops=None,reframe=None):
     if cancelled.is_set():raise ValueError('Отменено.')
     source=Path(source).resolve();folder=Path(folder).resolve();folder.mkdir(parents=True,exist_ok=True)
     identity=source_key(source);total=probe(source)
@@ -91,7 +92,8 @@ def render_montage(source,candidate,transcript,folder,cancelled,progress=lambda 
                           for c in censored['conflicts'][:5])
         raise ValueError('Цензура не согласована с монтажом: '+details)
     mute=volume_filter(censored['ops'])
-    key=hashlib.sha256(json.dumps([identity,plan,candidate['title'],cues,censored['ops'],'montage-v2'],ensure_ascii=False).encode()).hexdigest()
+    key=hashlib.sha256(json.dumps([identity,plan,candidate['title'],cues,censored['ops'],
+        bool(reframe),reframe['segments'] if reframe else None,'montage-v3'],ensure_ascii=False).encode()).hexdigest()
     work=folder/key;work.mkdir(exist_ok=True);target=work/'preview.mp4'
     marker=work/'complete.json'
     if marker.exists() and target.exists():
@@ -101,16 +103,26 @@ def render_montage(source,candidate,transcript,folder,cancelled,progress=lambda 
     check_disk(work,plan['duration']*3)
     data=json.loads(subprocess.check_output([executable('ffprobe'),'-v','error','-show_streams','-of','json',str(source)],text=True,timeout=30,creationflags=getattr(subprocess,'CREATE_NO_WINDOW',0)))
     audio=any(s['codec_type']=='audio' for s in data['streams'])
+    video_stream=next(s for s in data['streams'] if s['codec_type']=='video')
+    src_w=int(video_stream['width']);src_h=int(video_stream['height'])
     pieces=[]
     for i,s in enumerate(plan['segments']):
         if cancelled.is_set():raise ValueError('Отменено.')
         duration=s['source_out']-s['source_in'];piece=work/f'part-{i:03}-{uuid.uuid4().hex}.mp4'
         command=[executable('ffmpeg'),'-v','error','-nostdin','-n','-ss',str(s['source_in']),'-i',str(source)]
         if not audio:command+=['-f','lavfi','-i','anullsrc=r=48000:cl=stereo']
+        # Smart Reframe: follow the subject with a speed-limited vertical crop.
+        # Where the subject cannot fit an honest window, fall back to fill.
+        tracked=reframe_filter(reframe,s['source_in'],duration,src_w,src_h) if reframe else None
         filt='[0:v]split=2[bg][fg];[bg]scale=720:1280:force_original_aspect_ratio=increase,crop=720:1280,boxblur=24:2[b];[fg]scale=720:1280:force_original_aspect_ratio=decrease:force_divisible_by=2[f];[b][f]overlay=(W-w)/2:(H-h)/2,setsar=1,fps=30[v]'
-        command+=['-t',str(duration),'-filter_complex',filt,'-map','[v]','-map','0:a:0' if audio else '1:a:0',
+        if tracked is not None:
+            command+=['-t',str(duration),'-vf',tracked,'-map','0:v:0','-map','0:a:0' if audio else '1:a:0',
             '-af',f'aresample=48000,afade=t=in:d=0.01,afade=t=out:st={max(0,duration-.01)}:d=0.01',
             '-c:v','libx264','-preset','fast','-crf','20','-pix_fmt','yuv420p','-c:a','aac','-ar','48000','-ac','2',str(piece)]
+        else:
+            command+=['-t',str(duration),'-filter_complex',filt,'-map','[v]','-map','0:a:0' if audio else '1:a:0',
+                '-af',f'aresample=48000,afade=t=in:d=0.01,afade=t=out:st={max(0,duration-.01)}:d=0.01',
+                '-c:v','libx264','-preset','fast','-crf','20','-pix_fmt','yuv420p','-c:a','aac','-ar','48000','-ac','2',str(piece)]
         run_media(command,cancelled,work);pieces.append(piece)
         progress((i+1)/(len(plan['segments'])+1)*100)
     listing=work/('concat-'+uuid.uuid4().hex+'.txt')
