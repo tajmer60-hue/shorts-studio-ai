@@ -166,6 +166,62 @@ def import_track(folder, file_path, title, artist, license_id, source_url, moods
     save_catalog(folder, data)
     return entry
 
+def merge_library_v2(folder, data):
+    """Merge the customer's library v2 JSON without ever trusting its paths.
+
+    A `file_path` in the supplied JSON is a claim, not a file: it is recorded
+    only when the file actually exists on this machine. `is_non_commercial` and
+    `usage_scope` are honoured and tighten the tier, never loosen it.
+    """
+    if not isinstance(data, dict) or not isinstance(data.get('tracks'), dict):
+        raise ValueError('Неизвестная схема библиотеки v2.')
+    catalog = load_catalog(folder)
+    by_id = {t['id']: t for t in catalog['tracks']}
+    added, updated = 0, 0
+    for group in data['tracks'].values():
+        for item in group:
+            track_id = str(item.get('track_id', '')).lower()
+            if not track_id:
+                continue
+            scopes = [str(x) for x in item.get('usage_scope', [])] or ['TikTok', 'YouTube Shorts']
+            file_claim = item.get('file_path')
+            real_file = None
+            if file_claim:
+                candidate = Path(file_claim)
+                if candidate.is_file():
+                    real_file = str(candidate.resolve())
+            entry = by_id.get(track_id)
+            if entry is None:
+                entry = dict(id=track_id, title=item.get('title', track_id),
+                             artist=item.get('artist', ''), moods=['none'],
+                             use=item.get('style', ''), playable=False,
+                             license=CLAIMED_PLATFORM, license_name=str(item.get('license_status', '')),
+                             attribution_required=None, platform_restrictions=scopes,
+                             commercial='requires_verification',
+                             source='customer library v2', file=real_file,
+                             note=item.get('warning', PLATFORM_NOTE))
+                catalog['tracks'].append(entry)
+                by_id[track_id] = entry
+                added += 1
+            else:
+                entry['platform_restrictions'] = scopes
+                entry['commercial'] = 'requires_verification'
+                if item.get('is_non_commercial') is True:
+                    entry['non_commercial_only'] = True
+                if real_file:
+                    entry['file'] = real_file
+                entry['license_name'] = str(item.get('license_status', entry.get('license_name', '')))
+                updated += 1
+            if item.get('is_non_commercial') is True:
+                entry['non_commercial_only'] = True
+    save_catalog(folder, catalog)
+    return dict(added=added, updated=updated,
+                mixable=sum(1 for t in catalog['tracks'] if license_ok(t)),
+                note='Пути из JSON приняты только для существующих файлов; уровень лицензии '
+                     'остался CLAIMED_PLATFORM, пока нет проверенной лицензии и файла.')
+
+
+
 
 def license_ok(entry, commercial=False, platform=None):
     """Three licensing tiers, checked against how the clip will be published.

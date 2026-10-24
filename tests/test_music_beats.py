@@ -217,5 +217,46 @@ class LicensingTierTests(unittest.TestCase):
         self.assertEqual(len([t for t in migrated['tracks'] if t['license'] == NOT_CLEARED]), 2)
 
 
+class LibraryV2MergeTests(unittest.TestCase):
+    def setUp(self):
+        self._temp = tempfile.TemporaryDirectory(dir=Path.cwd())
+        self.folder = Path(self._temp.name)
+
+    def tearDown(self):
+        self._temp.cleanup()
+
+    def v2(self, file_path=None):
+        return dict(library_version='v2.0', tracks=dict(funk_references=[dict(
+            track_id='F01', title='Montagem Coma (Slowed)', artist='ANDROMEDA, elysian.',
+            style='Funk / Bass', license_status='DEFAULT_LIBRARY_OK', file_path=file_path,
+            is_non_commercial=True, usage_scope=['TikTok', 'Shorts'],
+            warning='Commercial use requires manual verification.')]))
+
+    def test_claimed_paths_that_do_not_exist_are_not_trusted(self):
+        from music import merge_library_v2
+        report = merge_library_v2(self.folder, self.v2('/music/funk/F01_montagem_coma.mp3'))
+        self.assertEqual(report['mixable'], 0)
+        catalog = load_catalog(self.folder)
+        entry = next(t for t in catalog['tracks'] if t['id'] == 'f01')
+        self.assertIsNone(entry['file'])
+        self.assertEqual(entry['license'], CLAIMED_PLATFORM)
+        self.assertTrue(entry['non_commercial_only'])
+        self.assertEqual(entry['platform_restrictions'], ['TikTok', 'Shorts'])
+
+    def test_an_existing_file_becomes_mixable_non_commercial_only(self):
+        from music import merge_library_v2
+        audio = write_click_track(Path(self.folder) / 'f01.mp3')
+        merge_library_v2(self.folder, self.v2(str(audio)))
+        catalog = load_catalog(self.folder)
+        entry = next(t for t in catalog['tracks'] if t['id'] == 'f01')
+        self.assertTrue(license_ok(entry, commercial=False, platform='TikTok'))
+        self.assertFalse(license_ok(entry, commercial=True, platform='TikTok'))
+
+    def test_malformed_library_is_refused(self):
+        from music import merge_library_v2
+        with self.assertRaises(ValueError):
+            merge_library_v2(self.folder, dict(tracks='nope'))
+
+
 if __name__ == '__main__':
     unittest.main()

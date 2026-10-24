@@ -20,6 +20,7 @@ from intros import detect_exclusions,AUTO_SKIP,apply_exclusions
 from style_profile import profile_from_reference,rank_with_style,style_targets
 import music as music_lib
 import hooks as hook_mod
+from qc import qc_report
 from reframe import plan_reframe,SaliencyBoxSource,ProviderBoxSource
 from providers import (GeminiPlanner,GroqPlanner,FallbackChain,Ledger,ConsentRequired,FreeQuota,
                        FREE_VISION_MODEL,UNKNOWN_TARIFF_RESERVE)
@@ -274,8 +275,18 @@ def _finish_and_render(source,transcript,manifest,project,result,ops,reframe,
         atomic_json(video.parent/(video.stem+'.hook.json'),dict(hook=hook,sfx=sfx,
             mood=mood_used,music=track['title'] if track else None,
             music_licensed=bool(track and music_lib.license_ok(track))))
+        status(f'Проверяю готовый ролик {i+1}…')
+        try:
+            qc=qc_report(video,plan=None,words=transcript.get('words',[]),cues=[],
+                         censor=censor,hook=hook,reframe_used=bool(reframe))
+            atomic_json(video.parent/(video.stem+'.qc.json'),qc)
+        except (OSError,ValueError,subprocess.SubprocessError) as error:
+            qc=dict(schema=1,checks=[],scores={},needs_review=[f'QC не выполнен: {error}'],
+                    limitations=['Отчёт QC отсутствует: проверку нужно повторить вручную.'])
+            atomic_json(video.parent/(video.stem+'.qc.json'),qc)
         on_clip(dict(candidate=candidate,path=str(video),part=i+1,censor=censor,
-                     hook=hook,sfx=sfx,music=track['title'] if track else None))
+                     hook=hook,sfx=sfx,music=track['title'] if track else None,
+                     qc=qc.get('scores'),qc_review=qc.get('needs_review')))
     return dict(clips=len(result['candidates']),result=result)
 
 
