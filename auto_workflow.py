@@ -16,6 +16,7 @@ from montage_render import run_media,render_montage,aligned_segments
 from cloud_planner import OpenRouterPlanner,unique_chronological,REQUEST_RESERVE
 from censor import dictionary,profanity_hits,audio_ops
 from modes import MODE_PROMPTS,plan_for_mode
+from intros import detect_exclusions,AUTO_SKIP,apply_exclusions
 from reframe import plan_reframe,SaliencyBoxSource,ProviderBoxSource
 from providers import (GeminiPlanner,GroqPlanner,FallbackChain,Ledger,ConsentRequired,FreeQuota,
                        FREE_VISION_MODEL,UNKNOWN_TARIFF_RESERVE)
@@ -162,6 +163,35 @@ def build_reframe(source,manifest,project,planner,settings,cancelled,status):
     return plan
 
 
+def detect_and_save(source,transcript,manifest,project,cancelled,status,use_black=True):
+    """Detect intro/recap/credits once per source identity; reuse the cache after."""
+    path=project/'exclusions.json'
+    identity=manifest['source_identity']
+    if path.exists():
+        try:
+            data=json.loads(path.read_text(encoding='utf-8'))
+            if data.get('source_identity')==identity and data.get('schema')==1:
+                return data
+        except (OSError,ValueError):
+            pass
+    status('Ищу заставку, рекап и финальные титры…')
+    data=detect_exclusions(source,transcript,manifest['duration'],cancelled,use_black)
+    data['source_identity']=identity
+    atomic_json(path,data)
+    skipped=[r for r in data['regions'] if r['policy']==AUTO_SKIP]
+    status(f'Исключений из автопланирования: {len(skipped)}; на проверку: '
+           f'{len(data["regions"])-len(skipped)}. Подробности в exclusions.json.')
+    return data
+
+
+def strip_regions(transcript,regions):
+    """Remove cues and words inside auto-skip regions so planners never see them."""
+    bad=[(r['start'],r['end']) for r in regions if r['policy']==AUTO_SKIP]
+    def outside(item):return not any(a-1e-6<=item['start'] and item['end']<=b+1e-6 for a,b in bad)
+    return dict(transcript,cues=[c for c in transcript.get('cues',[]) if outside(c)],
+                words=[w for w in transcript.get('words',[]) if outside(w)])
+
+
 def _apply_pause_cuts(candidate,cuts):
     """Turn approved word-safe pause cuts into real segment splits.
 
@@ -218,10 +248,13 @@ def create_clips(source,root,key,budget,authorized,cancelled,status,on_clip,
         # Fully offline automatic montage: local editorial algorithms, no network,
         # no money. Honest label: heuristics over the transcript, not an AI verdict.
         status(f'Собираю ролики локальным алгоритмом режима «{mode}» без нейросети…')
-        raw=plan_for_mode(mode,transcript,(),duration_range,aggressiveness,top_k=top_k)
+        exclusions=detect_and_save(source,transcript,manifest,project,cancelled,status)
+        clean=strip_regions(transcript,exclusions['regions'])
+        raw=plan_for_mode(mode,clean,(),duration_range,aggressiveness,top_k=top_k)
         if raw.get('reason'):status(raw['reason'])
         from ai_contract import validate_ai_plan
         result=validate_ai_plan(raw,manifest['duration'])
+        result=apply_exclusions(exclusions['regions'],result)
         reframe=build_reframe(source,manifest,project,None,settings,cancelled,status)
         done=_finish_and_render(source,transcript,manifest,project,result,ops,reframe,
                                 cancelled,status,on_clip)
@@ -268,6 +301,8 @@ def create_clips(source,root,key,budget,authorized,cancelled,status,on_clip,
                 if not any(a['in']<=s['in']<s['out']<=a['out'] for a in allowed):
                     raise ValueError('Итоговый AI-план использует неподтверждённый материал.')
     else:result=dict(schema=1,candidates=[])
+    exclusions=detect_and_save(source,transcript,manifest,project,cancelled,status)
+    result=apply_exclusions(exclusions['regions'],result)
     done=_finish_and_render(source,transcript,manifest,project,result,ops,reframe,
                             cancelled,status,on_clip)
     return dict(prepared=True,cloud=True,mode=mode,clips=done['clips'],project=str(project),
