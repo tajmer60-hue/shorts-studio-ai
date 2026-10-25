@@ -41,6 +41,33 @@ class AutoUiTests(unittest.TestCase):
         self.assertEqual([self.window.provider.itemText(i) for i in range(self.window.provider.count())],
                          list(PROVIDERS))
 
+    def test_worker_error_is_not_replaced_by_success(self):
+        self.window.events.put(('error','FFmpeg failed'))
+        self.window.poll()
+        self.assertIn('FFmpeg failed',self.window.status.text())
+        self.assertNotIn('Подготовлено',self.window.status.text())
+        self.assertEqual(self.window.progress.value(),0)
+
+    def test_saved_key_load_does_not_authorize_upload(self):
+        with patch('auto_ui.load_key',return_value='test-saved-credential'):
+            window=AutoStudio(self.root/'data')
+        try:
+            self.assertEqual(window.keys['openrouter_key'].text(),'test-saved-credential')
+            self.assertFalse(window.allowed.isChecked())
+            self.assertFalse(window.training.isChecked())
+            self.assertEqual(window.budget.value(),0)
+            self.assertNotIn('test-saved-credential',window.connection_status.text())
+        finally:
+            window.close()
+
+    def test_settings_can_scroll_on_laptop_screen(self):
+        self.window.resize(1180,720)
+        self.window.show();self.app.processEvents()
+        self.assertGreater(self.window.scroll.verticalScrollBar().maximum(),0)
+        self.window.scroll.ensureWidgetVisible(self.window.save)
+        self.app.processEvents()
+        self.assertGreater(self.window.scroll.verticalScrollBar().value(),0)
+
     def test_switching_provider_hides_the_keys_that_are_not_used(self):
         self.window.provider_changed('auto')
         self.assertTrue(all(row.isVisibleTo(row.parentWidget()) for row in self.window.key_rows.values()))

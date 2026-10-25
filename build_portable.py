@@ -84,7 +84,7 @@ def build(target):
         add(root / 'tools' / name, 'tools/' + name)
     for name in ('review_ui.py', 'delivery.py', 'ai_contract.py', 'AI_OPTIONS.md'):
         add(root / name, name)
-    for name in ('auto_ui.py', 'auto_workflow.py', 'cloud_planner.py', 'montage_render.py'):
+    for name in ('auto_ui.py', 'auto_workflow.py', 'cloud_planner.py', 'montage_render.py', 'credential_store.py'):
         add(root / name, name)
     for name in ('providers.py', 'censor.py', 'modes.py', 'reframe.py', 'intros.py',
                  'style_profile.py', 'music.py', 'beat_sync.py', 'hooks.py', 'profiles.py',
@@ -123,4 +123,3 @@ if __name__ == '__main__':
     parser.add_argument('output', type=Path)
     args = parser.parse_args()
     build(args.output)
-

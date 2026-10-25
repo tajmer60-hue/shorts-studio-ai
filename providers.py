@@ -271,42 +271,51 @@ class Ledger:
             raise ValueError('Некорректный бюджет.')
         self.path = Path(path)
         self.path.parent.mkdir(parents=True, exist_ok=True)
-        self.db = sqlite3.connect(self.path, timeout=10)
-        self.db.row_factory = sqlite3.Row
-        self.db.execute('CREATE TABLE IF NOT EXISTS requests ('
-                        'id INTEGER PRIMARY KEY, created REAL NOT NULL, provider TEXT NOT NULL,'
-                        'model TEXT NOT NULL, cache_key TEXT NOT NULL, reserved_usd REAL NOT NULL,'
-                        'reported_usd REAL, status TEXT NOT NULL, tokens INTEGER, quota TEXT)')
-        self.db.commit()
+        with self.connection() as db:
+            db.execute('CREATE TABLE IF NOT EXISTS requests ('
+                       'id INTEGER PRIMARY KEY, created REAL NOT NULL, provider TEXT NOT NULL,'
+                       'model TEXT NOT NULL, cache_key TEXT NOT NULL, reserved_usd REAL NOT NULL,'
+                       'reported_usd REAL, status TEXT NOT NULL, tokens INTEGER, quota TEXT)')
+
+    from contextlib import contextmanager
+
+    @contextmanager
+    def connection(self):
+        db=sqlite3.connect(self.path,timeout=10)
+        db.row_factory=sqlite3.Row
+        try:
+            with db:yield db
+        finally:db.close()
 
     def used(self):
-        row = self.db.execute('SELECT COALESCE(SUM(reserved_usd), 0) FROM requests').fetchone()
-        return float(row[0])
+        with self.connection() as db:
+            return float(db.execute('SELECT COALESCE(SUM(reserved_usd),0) FROM requests').fetchone()[0])
 
     def remaining(self):
-        return max(0.0, self.budget - self.used())
+        return max(0.0,self.budget-self.used())
 
-    def begin(self, provider, model, cache_key, amount):
-        """Refuse before any network call when the project cap would be exceeded."""
-        if self.used() + amount > self.budget:
-            raise QuotaExhausted(f'Лимит проекта исчерпан: зарезервировано ${self.used():.4f} '
-                                 f'из ${self.budget:.4f}. Ответы сохранены; запрос не отправлен.')
-        with self.db:
-            cursor = self.db.execute('INSERT INTO requests(created, provider, model, cache_key,'
-                                     ' reserved_usd, status) VALUES (?,?,?,?,?,?)',
-                                     (time.time(), provider, model, cache_key, amount, 'pending'))
-        return cursor.lastrowid
+    def begin(self,provider,model,cache_key,amount):
+        if not math.isfinite(amount) or amount<0:raise ValueError('Invalid reservation')
+        with self.connection() as db:
+            db.execute('BEGIN IMMEDIATE')
+            used=float(db.execute('SELECT COALESCE(SUM(reserved_usd),0) FROM requests').fetchone()[0])
+            if used+amount>self.budget:
+                raise QuotaExhausted(f'Лимит проекта исчерпан: зарезервировано ${used:.4f} из ${self.budget:.4f}. Запрос не отправлен.')
+            cursor=db.execute('INSERT INTO requests(created,provider,model,cache_key,reserved_usd,status) VALUES (?,?,?,?,?,?)',
+                              (time.time(),provider,model,cache_key,amount,'pending'))
+            return cursor.lastrowid
 
-    def finish(self, request_id, status, reported_usd=None, tokens=None, limits=None):
-        with self.db:
-            self.db.execute('UPDATE requests SET status=?, reported_usd=?, tokens=?, quota=? WHERE id=?',
-                            (status, reported_usd, tokens, json.dumps(limits or {}, ensure_ascii=False), request_id))
+    def finish(self,request_id,status,reported_usd=None,tokens=None,limits=None):
+        with self.connection() as db:
+            db.execute('UPDATE requests SET status=?,reported_usd=?,tokens=?,quota=? WHERE id=?',
+                       (status,reported_usd,tokens,json.dumps(limits or {},ensure_ascii=False),request_id))
 
     def rows(self):
-        return [dict(row) for row in self.db.execute('SELECT * FROM requests ORDER BY id DESC')]
+        with self.connection() as db:
+            return [dict(row) for row in db.execute('SELECT * FROM requests ORDER BY id DESC')]
 
     def close(self):
-        self.db.close()
+        pass  # Each operation releases its connection, including on Windows.
 
 
 class ResponseCache:

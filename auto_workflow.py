@@ -236,7 +236,8 @@ def apply_style(source,result,settings,project,cancelled,status):
 
 
 def _finish_and_render(source,transcript,manifest,project,result,ops,reframe,
-                       cancelled,status,on_clip):
+                       cancelled,status,on_clip,root,settings):
+    root=Path(root)
     for c in result['candidates']:
         c['source_segments']=_apply_pause_cuts(c,c.get('pause_cuts',[]))
         aligned=aligned_segments(c,transcript['words'],manifest['duration'])
@@ -319,7 +320,7 @@ def create_clips(source,root,key,budget,authorized,cancelled,status,on_clip,
         result=apply_style(source,result,settings,project,cancelled,status)
         reframe=build_reframe(source,manifest,project,None,settings,cancelled,status)
         done=_finish_and_render(source,transcript,manifest,project,result,ops,reframe,
-                                cancelled,status,on_clip)
+                                cancelled,status,on_clip,root,settings)
         return dict(prepared=True,cloud=False,local_montage=True,mode=mode,
                     clips=done['clips'],project=str(project),profanity=len(review['hits']),
                     muted=len(ops),reason=raw.get('reason'),limitations=raw.get('limitations'))
@@ -329,7 +330,8 @@ def create_clips(source,root,key,budget,authorized,cancelled,status,on_clip,
     # BEFORE any provider-backed reframe so a quota check always precedes spend.
     reserve=float(getattr(planner,'reserve_estimate',lambda:REQUEST_RESERVE)())
     ledger=getattr(planner,'ledger',None)
-    fresh=not ledger.rows() if ledger is not None else True
+    rows=ledger.rows() if ledger is not None and callable(getattr(ledger,'rows',None)) else ledger
+    fresh=not rows
     required=(len(manifest['packets'])+1)*reserve
     free_quota=getattr(planner,'quota',None)
     if free_quota is not None:
@@ -367,6 +369,6 @@ def create_clips(source,root,key,budget,authorized,cancelled,status,on_clip,
     result=apply_exclusions(exclusions['regions'],result)
     result=apply_style(source,result,settings,project,cancelled,status)
     done=_finish_and_render(source,transcript,manifest,project,result,ops,reframe,
-                            cancelled,status,on_clip)
+                            cancelled,status,on_clip,root,settings)
     return dict(prepared=True,cloud=True,mode=mode,clips=done['clips'],project=str(project),
                 profanity=len(review['hits']),muted=len(ops))

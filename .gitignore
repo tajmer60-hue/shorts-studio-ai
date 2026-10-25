@@ -17,6 +17,7 @@ cache/
 models/
 *.partial.mp4
 *.log
+*.dpapi
 .pytest_cache/
 MIGRATION_CONFIG.json
 dist/

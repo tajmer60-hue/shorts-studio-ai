@@ -10,11 +10,12 @@ from PySide6.QtCore import QTimer,QUrl,Qt
 from PySide6.QtGui import QPixmap
 from PySide6.QtWidgets import (QMainWindow,QWidget,QVBoxLayout,QHBoxLayout,QLabel,QPushButton,
     QLineEdit,QFileDialog,QListWidget,QListWidgetItem,QMessageBox,QCheckBox,QComboBox,QDoubleSpinBox,
-    QGroupBox,QProgressBar,QSlider,QStackedWidget,QInputDialog,QDialog)
+    QGroupBox,QProgressBar,QSlider,QStackedWidget,QInputDialog,QDialog,QScrollArea)
 from PySide6.QtMultimedia import QMediaPlayer,QAudioOutput
 from PySide6.QtMultimediaWidgets import QVideoWidget
 from auto_workflow import PROVIDERS,create_clips
 from delivery import safe_name,timecode
+from credential_store import load_key
 
 
 class AutoStudio(QMainWindow):
@@ -25,7 +26,8 @@ class AutoStudio(QMainWindow):
         self.cancelled=threading.Event();self.clips=[]
         self.setWindowTitle('Shorts Studio AI — автоматический монтаж');self.resize(1180,820)
         self.setStyleSheet('QMainWindow,QWidget{background:#101722;color:#edf2fa;font-size:14px;} QLineEdit,QListWidget{background:#1b2635;border:1px solid #35465c;border-radius:7px;padding:9px;} QPushButton{background:#283c55;padding:10px;border-radius:7px;} QPushButton:disabled{color:#8391a3;} QGroupBox{border:1px solid #35465c;border-radius:8px;margin-top:12px;padding-top:16px;}')
-        root=QWidget();self.setCentralWidget(root);layout=QVBoxLayout(root)
+        root=QWidget();self.scroll=QScrollArea();self.scroll.setWidgetResizable(True)
+        self.scroll.setWidget(root);self.setCentralWidget(self.scroll);layout=QVBoxLayout(root)
         title=QLabel('Из серии — в готовые истории');title.setStyleSheet('font-size:26px;font-weight:700;');layout.addWidget(title)
         layout.addWidget(QLabel('Загрузите видео. AI выберет события, соберёт ролики и добавит субтитры. Вы проверите результат.'))
         self.source=QLineEdit();self.source.setPlaceholderText('Выберите фильм или серию')
@@ -47,6 +49,15 @@ class AutoStudio(QMainWindow):
             row.addWidget(field,1)
             link=QLabel('<a href="%s">получить ключ</a>'%url);link.setOpenExternalLinks(True);row.addWidget(link)
             opts.addWidget(holder);self.key_rows[name]=holder;self.keys[name]=field
+        self.connection_status=QLabel('OpenRouter: введите ключ или используйте защищённое подключение.')
+        try:
+            saved_key=load_key(Path(data_dir)/'openrouter.dpapi')
+            if saved_key:
+                self.keys['openrouter_key'].setText(saved_key)
+                self.connection_status.setText('OpenRouter подключён: ключ загружен из защищённого хранилища Windows. Анализ сам не запускается.')
+        except (OSError,ValueError):
+            self.connection_status.setText('Windows не смогла открыть сохранённый ключ. Введите ключ вручную.')
+        opts.addWidget(self.connection_status)
         self.allowed=QCheckBox('Разрешаю облачный анализ и отправку реплик + обзорных кадров выбранному провайдеру');opts.addWidget(self.allowed)
         self.training=QCheckBox('Бесплатные модели: разрешаю провайдеру обрабатывать отправленные данные')
         self.training.setToolTip('Бесплатные эндпоинты OpenRouter недоступны при запрете обработки данных. Платные модели отправляются с запретом (deny).')
@@ -54,7 +65,7 @@ class AutoStudio(QMainWindow):
         self.quota_label=QLabel('')
         self.quota_label.setWordWrap(True);opts.addWidget(self.quota_label)
         row=QHBoxLayout();row.addWidget(QLabel('Лимит проекта, USD:'));self.budget=QDoubleSpinBox();self.budget.setRange(0,20);self.budget.setValue(0);self.budget.setSingleStep(.5);row.addWidget(self.budget);opts.addLayout(row)
-        opts.addWidget(QLabel('Пока разрешение выключено: только локальная подготовка. API не вызывается.'));layout.addWidget(settings)
+        opts.addWidget(QLabel('Без разрешения облака работает локальный монтаж по признакам речи. Это не AI-отбор.'));layout.addWidget(settings)
         mode_box=QGroupBox('Режим AI-монтажа');mbox=QVBoxLayout(mode_box)
         mrow=QHBoxLayout();mrow.addWidget(QLabel('Режим:'))
         self.mode=QComboBox();self.mode.addItem('Serial Cutter — связные Part 1..N','serial')
@@ -116,9 +127,9 @@ class AutoStudio(QMainWindow):
         layout.addWidget(censor_box)
         # Initialise from the combo's actual value, not from an assumed default.
         self.provider_changed(self.provider.currentText())
-        row=QHBoxLayout();self.start=QPushButton('Подготовить серию без расходов');self.start.setStyleSheet('background:#3478f6;font-size:17px;font-weight:700;padding:14px;');self.start.clicked.connect(self.begin);row.addWidget(self.start)
+        row=QHBoxLayout();self.start=QPushButton('Создать ролики локально');self.start.setStyleSheet('background:#3478f6;font-size:17px;font-weight:700;padding:14px;');self.start.clicked.connect(self.begin);row.addWidget(self.start)
         self.stop=QPushButton('Остановить');self.stop.setEnabled(False);self.stop.clicked.connect(self.cancelled.set);row.addWidget(self.stop);layout.addLayout(row)
-        self.allowed.toggled.connect(lambda on:self.start.setText('Создать ролики автоматически' if on else 'Подготовить серию без расходов'))
+        self.allowed.toggled.connect(lambda on:self.start.setText('Создать ролики автоматически' if on else 'Создать ролики локально'))
         row=QHBoxLayout();self.catalog=QListWidget();self.catalog.setMinimumWidth(360);self.catalog.currentRowChanged.connect(self.select);row.addWidget(self.catalog,1)
         right=QVBoxLayout();self.video=QVideoWidget();self.video.setMinimumSize(300,280)
         self.display=QStackedWidget();self.poster=QLabel('Здесь будет предпросмотр ролика');self.poster.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -129,6 +140,8 @@ class AutoStudio(QMainWindow):
         self.seek=QSlider(Qt.Orientation.Horizontal);right.addWidget(self.seek);row.addLayout(right,2);layout.addLayout(row,1)
         self.progress=QProgressBar();layout.addWidget(self.progress)
         self.status=QLabel('Для начала выберите серию. Облачные запросы сейчас выключены.');self.status.setWordWrap(True);layout.addWidget(self.status)
+        for label in root.findChildren(QLabel):
+            label.setWordWrap(True)
         self.player=QMediaPlayer(self);self.audio=QAudioOutput(self);self.player.setAudioOutput(self.audio);self.player.setVideoOutput(self.video)
         self.player.durationChanged.connect(lambda n:self.seek.setRange(0,n));self.player.positionChanged.connect(self.seek.setValue);self.seek.sliderMoved.connect(self.player.setPosition)
         self.player.errorOccurred.connect(lambda *_:self.status.setText('Не удалось воспроизвести: '+self.player.errorString()))
@@ -355,12 +368,18 @@ class AutoStudio(QMainWindow):
             if kind in ('done','error'):
                 self.busy=False;self.start.setEnabled(True);self.stop.setEnabled(False);self.progress.setRange(0,100)
                 self.progress.setValue(100 if kind=='done' else 0)
-                if kind=='error':self.status.setText(value)
-                elif value['cloud']:self.status.setText(f"Готово роликов: {value['clips']}. Просмотрите монтаж и сохраните понравившиеся.")
+                if kind=='error':
+                    self.status.setText('Обработка остановлена: '+str(value))
+                    continue
+                count=value.get('clips',0)
+                if count:
+                    mode='AI' if value.get('cloud') else 'локального алгоритма'
+                    self.status.setText(f'Готово роликов: {count} ({mode}). Просмотрите и сохраните понравившиеся.')
+                else:
+                    self.status.setText('Ролики не созданы. '+str(value.get('reason') or 'Подходящих моментов не найдено; попробуйте более длинный фрагмент или другой режим.'))
                 if isinstance(value,dict) and value.get('project'):
                     self.last_project=Path(value['project']);self.load_censor_review(value['project'])
                     self.refresh_qc_count()
-                else:self.status.setText('Подготовлено: диалоги и кадры всей серии сохранены локально. AI-отбор не запускался: платные запросы выключены.')
 
     def select(self,index):
         if not 0<=index<len(self.clips):return
@@ -371,7 +390,7 @@ class AutoStudio(QMainWindow):
         self.display.setCurrentWidget(self.poster)
         muted=len((clip.get('censor') or {}).get('ops',[]))
         note=('\nЗаглушено интервалов: %d (только одобренные вами).'%muted) if muted else '\nГлушение мата не применялось.'
-        self.detail.setText(clip['candidate']['rationale']+note+'\nСопровождение персонажа (Smart Reframe) ещё не подключено.');self.save.setEnabled(True)
+        self.detail.setText(clip['candidate']['rationale']+note+'\nАвтоматическое кадрирование требует просмотра: локальный алгоритм не гарантирует удержание нужного персонажа.');self.save.setEnabled(True)
 
     def play(self):
         self.display.setCurrentWidget(self.video)
